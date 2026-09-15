@@ -1,0 +1,20 @@
+{
+  "sun": [
+    "sun", "sunlight", "sunshine", "star", "solar", "rays", "heat", "daylight",
+    "sky", "moon", "bright", "warmth", "summer", "light", "morning", "horizon",
+    "beach", "shine", "yellow", "sunset", "sunrise", "planet", "earth",
+    "galaxy", "day", "noon", "flare", "eclipse", "orbit", "space"
+  ],
+  "ocean": [
+    "ocean", "sea", "water", "wave", "beach", "coast", "tide", "fish", "deep",
+    "blue", "marine", "current", "shore", "reef", "whale", "salt", "boat",
+    "ship", "island", "horizon", "storm", "coral", "dolphin", "sand", "swim",
+    "depth", "harbor", "surf", "shark", "seaweed"
+  ],
+  "coffee": [
+    "coffee", "espresso", "caffeine", "latte", "cup", "mug", "bean", "brew",
+    "cafe", "morning", "tea", "cream", "sugar", "roast", "drink", "barista",
+    "mocha", "cappuccino", "grind", "filter", "black", "hot", "aroma", "java",
+    "machine", "decaf", "shop", "beverage", "milk", "foam"
+  ]
+}
