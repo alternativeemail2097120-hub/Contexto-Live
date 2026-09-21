@@ -1,4 +1,4 @@
-// UI_VERSION: 2
+// UI_VERSION: 3
 (function () {
   'use strict';
 
@@ -63,6 +63,7 @@
   const diagCount = el('diagCount');
   const diagLast = el('diagLast');
   const diagRaw = el('diagRaw');
+  const diagDict = el('diagDict');
 
   // Hero + banners
   const heroSub = el('heroSub');
@@ -148,6 +149,42 @@
     const nowHidden = diagPanel.classList.toggle('hidden');
     diagBtn.setAttribute('aria-expanded', String(!nowHidden));
   });
+
+  // ============================================================
+  // Fullscreen. The layout keeps its fixed maximum width and stays
+  // centered, so going fullscreen never stretches the game.
+  // ============================================================
+  const fsBtn = el('fsBtn');
+  const fsIconEnter = el('fsIconEnter');
+  const fsIconExit = el('fsIconExit');
+  const fsRoot = document.documentElement;
+
+  function fsElement() { return document.fullscreenElement || document.webkitFullscreenElement || null; }
+  function fsSupported() { return !!(fsRoot.requestFullscreen || fsRoot.webkitRequestFullscreen); }
+
+  function syncFsButton() {
+    const on = !!fsElement();
+    fsBtn.setAttribute('aria-pressed', String(on));
+    fsBtn.setAttribute('aria-label', on ? 'Exit fullscreen' : 'Enter fullscreen');
+    fsBtn.title = on ? 'Exit fullscreen' : 'Enter fullscreen';
+    fsIconEnter.classList.toggle('hidden', on);
+    fsIconExit.classList.toggle('hidden', !on);
+    setRealVH();
+  }
+  fsBtn.addEventListener('click', async () => {
+    if (!fsSupported()) {
+      toast('Fullscreen isn’t available in this browser. On iPhone, tap Share, then Add to Home Screen, and open the game from your home screen.');
+      return;
+    }
+    try {
+      if (fsElement()) await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else await (fsRoot.requestFullscreen || fsRoot.webkitRequestFullscreen).call(fsRoot);
+    } catch (e) {
+      toast('Could not switch fullscreen mode.');
+    }
+  });
+  document.addEventListener('fullscreenchange', syncFsButton);
+  document.addEventListener('webkitfullscreenchange', syncFsButton);
 
   // ============================================================
   // Settings (remembered between visits on this device)
@@ -393,19 +430,25 @@
     return Math.max(4, Math.min(100, pct)) + '%';
   }
 
+  // A word somebody already guessed this round (real words only — a repeated
+  // non-word just stays "not a word").
+  function isAlreadyGuessed(entry) { return !!entry.isRepeat && entry.rank != null; }
+
   function rowClass(entry) {
-    return 'guess-row' + (entry.isWin ? ' win' : '') + (entry.isHost ? ' host' : '');
+    return 'guess-row' + (entry.isWin ? ' win' : '') + (entry.isHost ? ' host' : '') + (isAlreadyGuessed(entry) ? ' repeat' : '');
   }
   function rowHtml(entry) {
-    const pts = entry.points > 0 ? `<span class="guess-pts" title="Points earned">+${entry.points}</span>` : '';
-    const repeat = entry.isRepeat
-      ? `<span class="repeat-tag" title="Already found by ${escapeHtml(entry.repeatOf)}">↺ ${escapeHtml(entry.repeatOf)}</span>`
-      : '';
+    let note = '';
+    if (isAlreadyGuessed(entry)) {
+      note = `<span class="guess-note" title="First guessed by ${escapeHtml(entry.repeatOf)}">Already guessed</span>`;
+    } else if (entry.points > 0) {
+      note = `<span class="guess-pts" title="Points earned">+${entry.points}</span>`;
+    }
     return `
       <div class="guess-heat" style="width:${heatWidth(entry.rank)};background:${tierColor(entry.rank)}"></div>
       <span class="guess-user">${escapeHtml(entry.user)}</span>
-      <span class="guess-word">${escapeHtml(entry.word)}${repeat}</span>
-      ${pts}
+      <span class="guess-word">${escapeHtml(entry.word)}</span>
+      ${note}
       <span class="guess-rank ${tierClass(entry.rank)}">${rankLabel(entry.rank)}</span>
     `;
   }
@@ -626,6 +669,14 @@
     diagLast.textContent = state.diagnostics.lastReceived
       ? `${state.diagnostics.lastReceived.user}: ${state.diagnostics.lastReceived.text}`
       : '—';
+    if (state.dictionary) {
+      const d = state.dictionary;
+      const n = d.total.toLocaleString('en-US');
+      diagDict.classList.remove('warn');
+      if (d.status === 'loading') diagDict.textContent = `Loading… ${n} so far`;
+      else if (d.total < d.target) { diagDict.textContent = `${n} words (under ${d.target.toLocaleString('en-US')})`; diagDict.classList.add('warn'); }
+      else diagDict.textContent = `${n} words`;
+    }
     if (state.diagnostics.rawSamples && state.diagnostics.rawSamples.length) {
       diagRaw.textContent = state.diagnostics.rawSamples.join('\n\n---\n\n');
     }

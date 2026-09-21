@@ -1,4 +1,4 @@
-/* UI_VERSION: 2 */
+/* UI_VERSION: 3 */
 /* ============================================================
    Tokens
    ============================================================ */
@@ -66,8 +66,24 @@ button { font-family: inherit; }
   top: 0;
   z-index: 30;
 }
+.top-bar { display: flex; align-items: stretch; }
+.icon-btn {
+  flex: 0 0 auto;
+  width: 46px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+  cursor: pointer;
+}
+.icon-btn:hover { color: var(--text); }
+.icon-btn[aria-pressed="true"] { color: var(--brand-cyan); }
+.icon-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
 .diag-toggle {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -115,6 +131,7 @@ button { font-family: inherit; }
 .diag-row strong { color: var(--text); font-weight: 600; text-align: right; max-width: 60%; overflow-wrap: anywhere; }
 .raw-samples { margin-top: 6px; color: var(--muted); }
 .raw-samples summary { cursor: pointer; }
+.diag-row strong.warn { color: var(--gold); }
 #diagRaw {
   background: #05060a;
   border: 1px solid var(--line);
@@ -423,14 +440,16 @@ button { font-family: inherit; }
 .guess-heat { position: absolute; inset: 0 auto 0 0; z-index: 0; opacity: .28; }
 .guess-row.win { border-color: var(--tier-exact); }
 .guess-row.host { border: 1px dashed var(--brand-cyan); }
+.guess-row.repeat { border-color: rgba(255,194,75,.5); }
 .guess-user { font-weight: 700; font-size: 12.5px; z-index: 1; white-space: nowrap; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
 .guess-word { flex: 1; min-width: 0; z-index: 1; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
-.repeat-tag {
-  font-size: 10px;
+.guess-note {
+  z-index: 1;
+  font-size: 11px;
   font-weight: 700;
-  color: var(--muted);
-  background: rgba(255,255,255,.06);
-  padding: 1px 6px;
+  color: var(--gold);
+  background: rgba(255,194,75,.14);
+  padding: 2px 8px;
   border-radius: 999px;
   white-space: nowrap;
   flex-shrink: 0;
@@ -495,6 +514,15 @@ button { font-family: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
+}
+
+/* Small phones: keep the guessed WORD readable — names and the
+   "Already guessed" note give up space before the word does. */
+@media (max-width: 440px) {
+  .guess-row { gap: 8px; padding: 9px 9px; }
+  .guess-user { flex: 0 1 auto; min-width: 0; max-width: 64px; }
+  .guess-word { min-width: 56px; }
+  .guess-note { font-size: 10px; padding: 2px 6px; }
 }
 
 @media (max-width: 380px) {
