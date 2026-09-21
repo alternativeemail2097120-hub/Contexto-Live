@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- UI_VERSION: 2 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
@@ -12,9 +13,9 @@
 
 <div id="app">
 
-  <!-- ===== TOP: status + diagnostics drawer ===== -->
+  <!-- ===== TOP: status + diagnostics drawer (collapsible) ===== -->
   <header id="diagnostics">
-    <button id="diagBtn" class="diag-toggle" aria-expanded="false">
+    <button id="diagBtn" class="diag-toggle" aria-expanded="false" type="button">
       <span id="connDot" class="dot dot-idle"></span>
       <span id="connLabel">Not connected yet</span>
       <span id="modeBadge" class="mode-badge hidden"></span>
@@ -22,6 +23,7 @@
       <span class="diag-caret">▾</span>
     </button>
     <div id="diagPanel" class="diag-panel hidden">
+      <div class="diag-row"><span>Page version</span><strong>2</strong></div>
       <div class="diag-row"><span>Connection</span><strong id="diagStatus">idle</strong></div>
       <div class="diag-row"><span>Raw events received</span><strong id="diagCount">0</strong></div>
       <div class="diag-row"><span>Last received</span><strong id="diagLast">—</strong></div>
@@ -34,14 +36,111 @@
 
   <!-- ===== MAIN GAME AREA ===== -->
   <main id="game">
+
     <section class="hero">
       <h1 class="wordmark">Contexto <span>LIVE</span></h1>
-      <p id="heroSub" class="hero-sub">Set up your connection below to start a round.</p>
+      <p id="heroSub" class="hero-sub">Pick a mode, adjust the settings, then start a round.</p>
       <div id="statsRow" class="stats-row hidden">
         <span id="statGuesses">0 guesses</span>
         <span class="dot-sep">·</span>
         <span id="statPlayers">0 players</span>
         <span id="statDiff" class="diff-chip hidden"></span>
+      </div>
+    </section>
+
+    <!-- ===== SETTINGS (collapsible) ===== -->
+    <section id="settings" class="settings" data-mode="live">
+      <div class="settings-head">
+        <button id="settingsToggle" class="settings-toggle" type="button" aria-expanded="true" aria-controls="settingsBody">
+          <span class="settings-title">Settings</span>
+          <span id="settingsSummary" class="settings-summary"></span>
+          <span class="caret" aria-hidden="true">▾</span>
+        </button>
+        <button id="roundBtn" class="btn btn-primary" type="button">Start round</button>
+      </div>
+
+      <div id="settingsBody" class="collapse" data-open="true">
+        <div class="collapse-inner">
+
+          <div class="seg" role="tablist" aria-label="Game mode">
+            <button id="tab-live" class="seg-btn" type="button" role="tab" data-mode="live" aria-selected="true" aria-controls="pane-live">Live</button>
+            <button id="tab-test" class="seg-btn" type="button" role="tab" data-mode="test" aria-selected="false" aria-controls="pane-test" tabindex="-1">Test</button>
+            <button id="tab-offline" class="seg-btn" type="button" role="tab" data-mode="offline" aria-selected="false" aria-controls="pane-offline" tabindex="-1">Offline</button>
+          </div>
+          <p id="modeHint" class="mode-hint"></p>
+
+          <!-- Live -->
+          <div id="pane-live" class="mode-pane" data-pane="live" role="tabpanel" aria-labelledby="tab-live">
+            <div class="fields">
+              <div class="field wide">
+                <label class="label" for="tiktokUsername">TikTok username</label>
+                <div class="inline">
+                  <input id="tiktokUsername" class="input" type="text" placeholder="username (without @)" autocomplete="off" autocapitalize="none" spellcheck="false" />
+                  <button id="connectBtn" class="btn btn-outline" type="button">Connect</button>
+                </div>
+                <p id="connNote" class="field-note"></p>
+              </div>
+              <div class="field">
+                <label class="label" for="difficultySelect">Difficulty</label>
+                <select id="difficultySelect" class="select">
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
+                </select>
+              </div>
+              <div class="field">
+                <label class="label" for="lengthSelect">Word length</label>
+                <select id="lengthSelect" class="select">
+                  <option value="any">Any (4–15)</option>
+                  <option value="short">Short (4–6)</option>
+                  <option value="medium">Medium (7–9)</option>
+                  <option value="long">Long (10–15)</option>
+                </select>
+              </div>
+              <div class="field wide">
+                <label class="label" for="liveWord">Secret word (optional)</label>
+                <input id="liveWord" class="input" type="text" placeholder="Leave empty for a random word" autocomplete="off" autocapitalize="none" spellcheck="false" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Test -->
+          <div id="pane-test" class="mode-pane hidden" data-pane="test" role="tabpanel" aria-labelledby="tab-test">
+            <div class="fields">
+              <div class="field wide">
+                <label class="label" for="testWord">Secret word</label>
+                <select id="testWord" class="select"><option value="">Random</option></select>
+              </div>
+              <div class="field">
+                <span class="label">Simulated chat</span>
+                <label class="switch">
+                  <input id="autoplayToggle" type="checkbox" checked />
+                  <span class="track" aria-hidden="true"></span>
+                  <span id="autoplayText">On</span>
+                </label>
+              </div>
+              <div class="field">
+                <label class="label" for="speedSelect">Speed</label>
+                <select id="speedSelect" class="select">
+                  <option value="slow">Slow</option>
+                  <option value="normal">Normal</option>
+                  <option value="fast">Fast</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Offline -->
+          <div id="pane-offline" class="mode-pane hidden" data-pane="offline" role="tabpanel" aria-labelledby="tab-offline">
+            <div class="fields">
+              <div class="field wide">
+                <label class="label" for="offlineWord">Secret word</label>
+                <select id="offlineWord" class="select"><option value="">Random</option></select>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
     </section>
 
@@ -53,87 +152,42 @@
     </section>
 
     <section id="giveUpBanner" class="give-up-banner hidden">
-      Round ended. The word was <strong id="giveUpWord"></strong>.
+      Round ended. The answer was <strong id="giveUpWord"></strong> (#1).
     </section>
 
+    <!-- ===== LATEST GUESS (single line) ===== -->
+    <section class="latest" aria-label="Latest guess" aria-live="polite">
+      <span class="latest-label">Latest</span>
+      <div id="latestRow" class="guess-row is-empty">Waiting for the first guess…</div>
+    </section>
+
+    <!-- ===== LIVE GUESSES (auto-sorted by rank) ===== -->
     <section class="board">
       <div class="board-head">
         <h2>Live guesses</h2>
         <span id="guessCount" class="muted">0 guesses</span>
       </div>
-      <div id="guessList" class="guess-list">
-        <p class="empty-hint">Guesses from TikTok chat will appear here as soon as a round starts.</p>
-      </div>
+      <div id="guessList" class="guess-list"></div>
+      <p id="guessEmpty" class="empty-hint">Guesses will appear here, closest word first.</p>
     </section>
 
-    <section class="side-panels">
-      <div class="panel">
-        <h3>🏅 Ranked board</h3>
-        <p class="panel-sub">Best distinct guesses this round</p>
-        <ol id="closestList" class="mini-list"><li class="muted">No guesses yet</li></ol>
-      </div>
-      <div class="panel">
-        <h3>🏆 Top scores</h3>
-        <p class="panel-sub">Across this whole session</p>
-        <ol id="leaderboardList" class="mini-list"><li class="muted">No scores yet</li></ol>
-      </div>
-    </section>
-
-    <section class="hints">
-      <div class="hints-head">
-        <h3>💡 Hints</h3>
-        <span id="hintsUsed" class="muted">0 used</span>
-      </div>
-      <div id="hintList" class="hint-chips"></div>
-      <p id="hintEmpty" class="empty-hint-small">Tap Hint below if chat gets stuck.</p>
-    </section>
-
-    <section id="historyPanel" class="history-panel hidden">
-      <h3>📜 Round history</h3>
-      <div id="historyList" class="history-list"></div>
-    </section>
-
-    <section id="hostFeed" class="host-feed hidden">
-      <h3>💬 Host comments</h3>
-      <div id="hostMessages"></div>
-    </section>
   </main>
 
-  <!-- ===== BOTTOM: sticky host control dock ===== -->
-  <nav id="controlDock" class="control-dock">
-
-    <div id="tabSetup" class="dock-tab">
-      <div class="field-row">
-        <input id="tiktokUsername" type="text" placeholder="TikTok username (without @)" autocomplete="off" />
-        <button id="connectBtn" class="btn btn-primary">Connect</button>
-      </div>
-      <div class="field-row">
-        <select id="difficultySelect" class="select">
-          <option value="easy">Easy</option>
-          <option value="medium" selected>Medium</option>
-          <option value="hard">Hard</option>
-        </select>
-        <button id="startLiveBtn" class="btn btn-outline">🎲 New live word</button>
-        <button id="startTestBtn" class="btn btn-ghost">🧪 Test mode</button>
+  <!-- ===== BOTTOM: host word entry (collapsible) ===== -->
+  <nav id="hostDock" class="host-dock" aria-label="Host word entry">
+    <button id="dockToggle" class="dock-toggle" type="button" aria-expanded="true" aria-controls="dockBody">
+      <span>Enter a word</span>
+      <span class="caret" aria-hidden="true">▾</span>
+    </button>
+    <div id="dockBody" class="collapse" data-open="true">
+      <div class="collapse-inner">
+        <div class="dock-form">
+          <input id="playerName" class="input input-name hidden" type="text" placeholder="Player" maxlength="24" autocomplete="off" aria-label="Player name" />
+          <input id="hostInput" class="input" type="text" placeholder="Start a round to guess" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="send" disabled />
+          <button id="hostGuessBtn" class="btn btn-outline" type="button" disabled>Guess</button>
+        </div>
       </div>
     </div>
-
-    <div id="tabPlaying" class="dock-tab hidden">
-      <div class="field-row">
-        <input id="hostInput" type="text" placeholder="Type a comment or a guess to test…" autocomplete="off" />
-        <button id="hostCommentBtn" class="btn btn-ghost" title="Post as a visible host comment">💬</button>
-        <button id="hostGuessBtn" class="btn btn-outline" title="Submit as a test guess">▶</button>
-      </div>
-      <div class="field-row">
-        <button id="hintBtn" class="btn btn-outline">💡 Hint</button>
-        <button id="giveUpBtn" class="btn btn-ghost">🏳 Reveal</button>
-        <button id="autoplayBtn" class="btn btn-ghost hidden">▶ Autoplay</button>
-        <button id="shareBtn" class="btn btn-ghost">📋 Copy recap</button>
-        <button id="newRoundBtn" class="btn btn-primary">🔁 New round</button>
-        <button id="disconnectBtn" class="btn btn-ghost hidden">Disconnect</button>
-      </div>
-    </div>
-
   </nav>
 
 </div>
