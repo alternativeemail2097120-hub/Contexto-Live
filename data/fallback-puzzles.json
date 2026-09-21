@@ -166,6 +166,75 @@
     "folklore",
     "epic"
   ],
+  "moon": [
+    "moon", "lunar", "crescent", "night", "stars", "sky", "orbit", "tide",
+    "eclipse", "astronaut", "space", "rocket", "satellite", "glow", "dark",
+    "gravity", "phase", "telescope", "cheese", "werewolf", "moonlight",
+    "fullmoon", "planet", "earth", "sun", "rover", "landing", "craters",
+    "apollo", "beam"
+  ],
+  "rainbow": [
+    "rainbow", "colors", "arc", "sky", "rain", "prism", "light", "spectrum",
+    "clouds", "sunshine", "storm", "weather", "pot", "gold", "leprechaun",
+    "vivid", "arch", "refraction", "double", "unicorn", "pride", "flag",
+    "droplets", "mist", "bright", "hue", "painting", "sunset", "shower", "color"
+  ],
+  "elephant": [
+    "elephant", "trunk", "tusk", "africa", "safari", "zoo", "mammal", "gray",
+    "large", "herd", "ivory", "jungle", "circus", "ears", "wildlife",
+    "savanna", "tusks", "giant", "gentle", "memory", "india", "asia",
+    "animal", "wrinkled", "heavy", "grassland", "conservation", "poacher",
+    "calf", "matriarch"
+  ],
+  "butterfly": [
+    "butterfly", "caterpillar", "cocoon", "wings", "insect", "flower",
+    "garden", "metamorphosis", "flutter", "colorful", "monarch", "chrysalis",
+    "nectar", "pollinate", "spring", "migration", "antenna", "moth", "larva",
+    "delicate", "meadow", "summer", "transformation", "fly", "pattern",
+    "wildflower", "greenhouse", "species", "tropical", "symmetry"
+  ],
+  "basketball": [
+    "basketball", "hoop", "court", "dribble", "dunk", "player", "team",
+    "sport", "ball", "game", "gym", "sneakers", "coach", "referee",
+    "jersey", "score", "net", "rebound", "shoot", "athlete", "tournament",
+    "league", "point", "backboard", "layup", "defense", "offense",
+    "championship", "arena", "whistle"
+  ],
+  "grasshopper": [
+    "grasshopper", "insect", "cricket", "hop", "green", "grass", "jump",
+    "antenna", "field", "meadow", "leaf", "wings", "chirp", "bug", "nature",
+    "summer", "pest", "garden", "legs", "locust", "katydid", "outdoor",
+    "tiny", "spring", "creature", "leap", "camouflage", "pond", "farm", "weeds"
+  ],
+  "thunderstorm": [
+    "thunderstorm", "lightning", "rain", "storm", "clouds", "thunder",
+    "weather", "downpour", "flash", "wind", "sky", "tornado", "hurricane",
+    "flood", "forecast", "umbrella", "hail", "rumble", "electricity", "dark",
+    "severe", "nature", "shelter", "damp", "gusty", "summer", "bolt",
+    "warning", "cloudburst", "drizzle"
+  ],
+  "investigation": [
+    "investigation", "detective", "crime", "evidence", "police", "clues",
+    "suspect", "mystery", "case", "forensic", "witness", "interrogate",
+    "court", "justice", "criminal", "search", "report", "inquiry", "fbi",
+    "scandal", "analysis", "research", "probe", "testimony", "law",
+    "undercover", "corruption", "journalist", "audit", "truth"
+  ],
+  "responsibility": [
+    "responsibility", "duty", "accountability", "obligation", "trust",
+    "task", "commitment", "role", "leadership", "maturity", "burden",
+    "work", "reliability", "ethics", "integrity", "job", "promise",
+    "charge", "care", "management", "discipline", "adulthood", "ownership",
+    "conscience", "chores", "dependable", "liability", "honor",
+    "stewardship", "expectation"
+  ],
+  "congratulations": [
+    "congratulations", "celebration", "achievement", "success", "party",
+    "applause", "greeting", "honor", "milestone", "wedding", "graduation",
+    "cheers", "toast", "award", "victory", "joy", "festivity", "gift",
+    "balloon", "cake", "promotion", "accomplishment", "proud", "wishes",
+    "confetti", "triumph", "recognition", "ceremony", "salute", "kudos"
+  ],
   "pizza": [
     "pizza",
     "cheese",

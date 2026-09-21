@@ -155,6 +155,15 @@ Tap the bar to expand it and see:
 - Trivial inflections of the target (like "coffees" for "coffee") are
   filtered out of the ranking so they don't hand out a cheap near-exact
   slot right next to the real answer.
+- **Every real word gets ranked.** If a guess is a genuine English word
+  but has nothing to do with the target, it still gets a real rank
+  number (it just lands in the red "far off" zone) instead of being
+  brushed aside — only text that isn't a recognized word at all (typos,
+  gibberish) is left unranked and tagged "not a word."
+- **The secret word's length is randomized every round**, anywhere from
+  4 to 15 letters, and it's never shown up front — there are no letter
+  boxes revealing how long the word is. Chat has to guess it blind, the
+  same way other online Contexto-style games work.
 - Test mode uses a small built-in word list instead, so it works even
   with no internet and no TikTok connection at all.
 - **Scoring**: each guess earns points based on how close its rank is

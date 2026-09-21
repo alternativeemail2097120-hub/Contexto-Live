@@ -133,20 +133,6 @@ button { font-family: inherit; }
 }
 .hero-sub { color: var(--muted); font-size: 14px; margin-top: 6px; }
 
-.letter-tiles { display: flex; justify-content: center; gap: 6px; margin-top: 16px; flex-wrap: wrap; }
-.letter-tile {
-  width: 30px; height: 36px;
-  border: 1.5px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel-2);
-  display: flex; align-items: center; justify-content: center;
-  font-family: 'Baloo 2', sans-serif;
-  font-weight: 700;
-  font-size: 16px;
-  color: transparent;
-}
-.letter-tile.revealed { color: var(--gold); border-color: var(--gold); background: rgba(255,194,75,.1); }
-
 .stats-row {
   margin-top: 12px;
   font-size: 12.5px;
@@ -370,5 +356,4 @@ button { font-family: inherit; }
 @media (max-width: 380px) {
   .wordmark { font-size: 26px; }
   .side-panels { grid-template-columns: 1fr; }
-  .letter-tile { width: 24px; height: 30px; font-size: 13px; }
 }

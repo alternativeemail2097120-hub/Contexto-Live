@@ -13,6 +13,19 @@ const path = require('path');
 const fs = require('fs');
 const { WebSocketServer } = require('ws');
 
+// Full English dictionary (~275k words) used so that ANY real word a
+// player guesses gets an actual rank, even when it has nothing to do
+// with the target — it just lands far away (red). Only text that isn't
+// a recognized English word at all is left unranked ("not a word").
+// This mirrors how the real Contexto ranks its whole vocabulary rather
+// than only a shortlist of closely related words.
+const ENGLISH_WORDS = new Set(
+  fs.readFileSync(require('word-list'), 'utf8')
+    .split('\n')
+    .map((w) => w.toLowerCase().trim())
+    .filter(Boolean)
+);
+
 // ============================================================
 // 0. CRASH PROTECTION (never let one bad message kill the server)
 // ============================================================
@@ -93,6 +106,8 @@ const state = {
     winner: null,
     startedAt: null,
     uniquePlayers: new Set(),
+    extendedRankMap: new Map(), // word -> rank, for valid English words outside the core semantic list
+    nextExtendedRank: null,     // next rank to hand out to such a word
   },
   leaderboard: {}, // username -> { score, wins, guesses }
   roundHistory: [], // { word, winner, guessesUsed, players, difficulty, durationMs }
@@ -147,6 +162,37 @@ function normalize(w) {
   return (w || '').toLowerCase().trim().replace(/[^a-z]/g, '');
 }
 function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+// The secret word's length is randomized every round (4-15 letters) so
+// it's never confined to one length, and is never revealed up front —
+// the UI has nothing that hints at how many letters it is.
+const TARGET_LENGTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+
+function pickWordByRandomLength(difficulty) {
+  const targetLen = pickRandom(TARGET_LENGTHS);
+  const pool = WORD_BANK[difficulty] || WORD_BANK.medium;
+  let candidates = pool.filter((w) => normalize(w).length === targetLen);
+  if (!candidates.length) {
+    // That difficulty tier doesn't have a word of this length — widen
+    // the search across every difficulty rather than skip the length.
+    const allWords = [...WORD_BANK.easy, ...WORD_BANK.medium, ...WORD_BANK.hard];
+    candidates = allWords.filter((w) => normalize(w).length === targetLen);
+  }
+  if (!candidates.length) candidates = pool; // last resort
+  return pickRandom(candidates);
+}
+
+function pickFallbackWordByRandomLength() {
+  const targetLen = pickRandom(TARGET_LENGTHS);
+  const keys = Object.keys(FALLBACK_PUZZLES);
+  let candidates = keys.filter((k) => normalize(k).length === targetLen);
+  if (!candidates.length) candidates = keys.filter((k) => {
+    const l = normalize(k).length;
+    return l >= 4 && l <= 15;
+  });
+  if (!candidates.length) candidates = keys;
+  return pickRandom(candidates);
+}
 
 // Real Contexto pulls its ranking from a semantic-similarity model.
 // We approximate that with Datamuse, blending two signals the same
@@ -225,11 +271,11 @@ async function startGame(mode, opts = {}) {
     if (mode === 'test') {
       const word = opts.word && FALLBACK_PUZZLES[normalize(opts.word)]
         ? opts.word
-        : pickRandom(Object.keys(FALLBACK_PUZZLES));
+        : pickFallbackWordByRandomLength();
       puzzle = buildPuzzleFromFallback(word);
     } else {
       const pool = WORD_BANK[difficulty] || WORD_BANK.medium;
-      const word = opts.word || pickRandom(pool);
+      const word = opts.word || pickWordByRandomLength(difficulty);
       try {
         puzzle = await buildPuzzleFromDatamuse(word);
       } catch (err) {
@@ -257,6 +303,8 @@ async function startGame(mode, opts = {}) {
     state.game.winner = null;
     state.game.startedAt = Date.now();
     state.game.uniquePlayers = new Set();
+    state.game.extendedRankMap = new Map();
+    state.game.nextExtendedRank = orderedWords.length + 1;
 
     broadcast({ type: 'game_started', targetLength: state.game.targetLength, mode, difficulty });
     pushState();
@@ -354,12 +402,29 @@ function matchPercent(rank) {
   return Math.max(0, Math.min(100, Math.round(pct)));
 }
 
+// Ranks a guessed word no matter how far it is from the target:
+//  - on the precomputed semantic shortlist -> that rank
+//  - not on the shortlist, but a real English word -> a rank appended
+//    just past the shortlist (always lands in the red zone, but it's
+//    still a real, stable number instead of a dead end)
+//  - not a recognized English word at all -> null ("not a word")
+function resolveRank(word) {
+  if (rankMap.has(word)) return rankMap.get(word);
+  if (state.game.extendedRankMap.has(word)) return state.game.extendedRankMap.get(word);
+  if (ENGLISH_WORDS.has(word)) {
+    const rank = state.game.nextExtendedRank++;
+    state.game.extendedRankMap.set(word, rank);
+    return rank;
+  }
+  return null;
+}
+
 function handleGuess(user, rawText, isHost = false) {
   if (!state.game.active) return;
   const word = normalize((rawText || '').split(/\s+/)[0]);
   if (!word) return;
 
-  const rank = rankMap.has(word) ? rankMap.get(word) : null;
+  const rank = resolveRank(word);
   const alreadyBy = state.game.allGuessedWords.get(word);
   const isRepeat = !!alreadyBy && alreadyBy.user !== user;
   const entry = {

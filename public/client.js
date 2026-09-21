@@ -61,7 +61,6 @@
   const diagRaw = el('diagRaw');
 
   const heroSub = el('heroSub');
-  const letterTiles = el('letterTiles');
   const statsRow = el('statsRow');
   const statGuesses = el('statGuesses');
   const statPlayers = el('statPlayers');
@@ -104,7 +103,6 @@
   const newRoundBtn = el('newRoundBtn');
   const disconnectBtn = el('disconnectBtn');
 
-  let lastTargetLength = 0;
   let currentDifficulty = null;
 
   // ============================================================
@@ -152,8 +150,6 @@
     heroSub.textContent = msg.mode === 'test'
       ? 'Test mode round started — try typing a guess below.'
       : 'Round started! Guesses from TikTok LIVE chat will show up below.';
-    lastTargetLength = msg.targetLength;
-    renderLetterTiles(msg.targetLength, null);
     statsRow.classList.remove('hidden');
     setDiffChip(msg.difficulty, msg.mode);
     guessList.innerHTML = '<p class="empty-hint">Guesses will appear here as soon as someone types one.</p>';
@@ -168,7 +164,6 @@
   let lastRoundRecap = null; // { word, guessesUsed, hintsUsed, players, tierHistory, winner }
 
   function onWin(msg) {
-    renderLetterTiles(msg.word.length, msg.word);
     winnerName.textContent = msg.user;
     winWord.textContent = msg.word.toUpperCase();
     winMeta.textContent = `Solved in ${msg.guessesUsed} guess${msg.guessesUsed === 1 ? '' : 'es'}`;
@@ -179,7 +174,6 @@
   }
 
   function onGiveUp(msg) {
-    renderLetterTiles(msg.word.length, msg.word);
     giveUpWord.textContent = msg.word.toUpperCase();
     giveUpBanner.classList.remove('hidden');
     heroSub.textContent = 'Round ended — start a new round when ready.';
@@ -203,18 +197,6 @@
     statDiff.textContent = mode === 'test' ? 'Test' : difficulty;
     statDiff.className = 'diff-chip diff-' + (mode === 'test' ? 'medium' : difficulty);
     statDiff.classList.remove('hidden');
-  }
-
-  function renderLetterTiles(length, revealedWord) {
-    if (!length) { letterTiles.classList.add('hidden'); return; }
-    letterTiles.classList.remove('hidden');
-    letterTiles.innerHTML = '';
-    for (let i = 0; i < length; i++) {
-      const tile = document.createElement('div');
-      tile.className = 'letter-tile' + (revealedWord ? ' revealed' : '');
-      tile.textContent = revealedWord ? revealedWord[i].toUpperCase() : '';
-      letterTiles.appendChild(tile);
-    }
   }
 
   function renderState(state) {
@@ -248,10 +230,6 @@
     if (state.game.active || state.game.winner) {
       tabPlaying.classList.remove('hidden');
       tabSetup.classList.add('hidden');
-    }
-    if (state.game.targetLength && state.game.targetLength !== lastTargetLength) {
-      lastTargetLength = state.game.targetLength;
-      renderLetterTiles(state.game.targetLength, null);
     }
     if (state.game.difficulty) {
       statsRow.classList.remove('hidden');
@@ -308,7 +286,7 @@
     return 'var(--tier-red)';
   }
   function rankLabel(rank) {
-    if (rank == null) return 'not found';
+    if (rank == null) return 'not a word';
     if (rank === 1) return '🎯 EXACT';
     return '#' + rank;
   }
@@ -446,7 +424,7 @@
   shareBtn.addEventListener('click', () => {
     if (!lastRoundRecap) {
       // Round still in progress — share a quick live snapshot instead.
-      const text = `Contexto LIVE — round in progress\n${statGuesses.textContent} · ${statPlayers.textContent}\n${lastTargetLength ? lastTargetLength + '-letter word' : ''}`;
+      const text = `Contexto LIVE — round in progress\n${statGuesses.textContent} · ${statPlayers.textContent}`;
       copyToClipboard(text);
       return;
     }
