@@ -88,8 +88,9 @@ function broadcast(obj) {
 // ============================================================
 const state = {
   connection: { status: 'idle', message: 'Not connected yet.', username: null },
-  mode: null, // 'live' | 'test'
+  mode: null, // mode of the current / last round: 'live' | 'test' | 'offline'
   viewerCount: null,
+  autoplay: { running: false, speed: 'normal' }, // Test mode's simulated chat
   diagnostics: {
     rawEventCount: 0,
     lastReceived: null,
@@ -99,58 +100,50 @@ const state = {
     active: false,
     difficulty: null,
     targetWord: null,
-    targetLength: null,
-    hintsGiven: [],
-    hintsUsed: 0,
-    guesses: [],          // chronological feed (capped)
-    closestByWord: new Map(), // word -> {user, rank, ts} best-known entry, for the ranked board
-    allGuessedWords: new Map(), // word -> {user, rank} first guesser, for "already guessed" tags
-    tierHistory: [],       // full-round tier sequence, for the share recap (not capped like guesses)
+    board: new Map(),           // word -> best entry (one row per distinct ranked word)
+    allGuessedWords: new Map(), // word -> { user } first player to find it (points + repeat tags)
+    totalGuesses: 0,
+    latest: null,               // the most recent guess, shown in the "Latest" line
     winner: null,
+    result: null,               // { word, winner, gaveUp, guesses, players, points, total } once the round ends
     startedAt: null,
     uniquePlayers: new Set(),
     extendedRankMap: new Map(), // word -> rank, for valid English words outside the core semantic list
     nextExtendedRank: null,     // next rank to hand out to such a word
   },
-  leaderboard: {}, // username -> { score, wins, guesses }
-  roundHistory: [], // { word, winner, guessesUsed, players, difficulty, durationMs }
+  leaderboard: {}, // username -> { score, wins, guesses } — session totals, kept on the server
 };
 
+const MODES = ['live', 'test', 'offline'];
 let rankMap = new Map();
 let orderedWords = [];
+let testAutoplayTimer = null;
 
 function getPublicState() {
   return {
     connection: state.connection,
     mode: state.mode,
     viewerCount: state.viewerCount,
+    autoplay: state.autoplay,
     diagnostics: state.diagnostics,
+    wordChoices: WORD_CHOICES,
     game: {
       active: state.game.active,
       difficulty: state.game.difficulty,
-      targetLength: state.game.targetLength,
-      hintsGiven: state.game.hintsGiven,
-      hintsUsed: state.game.hintsUsed,
-      guesses: state.game.guesses.slice(-40),
-      closest: closestBoard(10),
       winner: state.game.winner,
+      result: state.game.result,
       uniquePlayers: state.game.uniquePlayers.size,
-      totalGuesses: state.game.guesses.length,
+      totalGuesses: state.game.totalGuesses,
+      latest: state.game.latest,
+      board: boardEntries(150),
     },
-    leaderboard: topLeaderboard(10),
-    roundHistory: state.roundHistory.slice(-8),
   };
 }
 
-function closestBoard(n) {
-  return Array.from(state.game.closestByWord.values())
+// One row per distinct ranked word, closest first.
+function boardEntries(n) {
+  return Array.from(state.game.board.values())
     .sort((a, b) => a.rank - b.rank)
-    .slice(0, n);
-}
-function topLeaderboard(n) {
-  return Object.entries(state.leaderboard)
-    .map(([user, v]) => ({ user, score: v.score, wins: v.wins }))
-    .sort((a, b) => b.score - a.score)
     .slice(0, n);
 }
 function pushState() { broadcast({ type: 'state', state: getPublicState() }); }
@@ -160,6 +153,8 @@ function pushState() { broadcast({ type: 'state', state: getPublicState() }); }
 // ============================================================
 const WORD_BANK = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'words.json'), 'utf8'));
 const FALLBACK_PUZZLES = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'fallback-puzzles.json'), 'utf8'));
+// Words the host can pick from in Test and Offline mode (built-in, no internet needed).
+const WORD_CHOICES = Object.keys(FALLBACK_PUZZLES).sort();
 
 function normalize(w) {
   return (w || '').toLowerCase().trim().replace(/[^a-z]/g, '');
@@ -171,15 +166,23 @@ function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 // the UI has nothing that hints at how many letters it is.
 const TARGET_LENGTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
-function pickWordByRandomLength(difficulty) {
-  const targetLen = pickRandom(TARGET_LENGTHS);
+// Host-selectable length ranges (Live mode). "any" keeps the original 4-15 spread.
+const LENGTH_RANGES = { any: [4, 15], short: [4, 6], medium: [7, 9], long: [10, 15] };
+
+function pickWordByRandomLength(difficulty, lengthKey) {
+  const [lo, hi] = LENGTH_RANGES[lengthKey] || LENGTH_RANGES.any;
+  const targetLen = pickRandom(TARGET_LENGTHS.filter((l) => l >= lo && l <= hi));
   const pool = WORD_BANK[difficulty] || WORD_BANK.medium;
+  const allWords = [...WORD_BANK.easy, ...WORD_BANK.medium, ...WORD_BANK.hard];
   let candidates = pool.filter((w) => normalize(w).length === targetLen);
   if (!candidates.length) {
     // That difficulty tier doesn't have a word of this length — widen
     // the search across every difficulty rather than skip the length.
-    const allWords = [...WORD_BANK.easy, ...WORD_BANK.medium, ...WORD_BANK.hard];
     candidates = allWords.filter((w) => normalize(w).length === targetLen);
+  }
+  if (!candidates.length) {
+    // Still nothing: any word inside the chosen length range.
+    candidates = allWords.filter((w) => { const l = normalize(w).length; return l >= lo && l <= hi; });
   }
   if (!candidates.length) candidates = pool; // last resort
   return pickRandom(candidates);
@@ -268,141 +271,125 @@ function buildPuzzleFromFallback(word) {
 async function startGame(mode, opts = {}) {
   try {
     const difficulty = ['easy', 'medium', 'hard'].includes(opts.difficulty) ? opts.difficulty : 'medium';
-    state.mode = mode;
+    const custom = normalize(opts.word || '');
     let puzzle;
 
-    if (mode === 'test') {
-      const word = opts.word && FALLBACK_PUZZLES[normalize(opts.word)]
-        ? opts.word
-        : pickFallbackWordByRandomLength();
-      puzzle = buildPuzzleFromFallback(word);
-    } else {
-      const pool = WORD_BANK[difficulty] || WORD_BANK.medium;
-      const word = opts.word || pickWordByRandomLength(difficulty);
+    if (mode === 'live') {
+      if (opts.word && custom.length < 3) throw new Error('The secret word needs at least 3 letters.');
+      const word = custom || pickWordByRandomLength(difficulty, opts.length);
       try {
         puzzle = await buildPuzzleFromDatamuse(word);
       } catch (err) {
         console.error('[DATAMUSE FAILED]', err);
+        if (custom && !FALLBACK_PUZZLES[custom]) {
+          throw new Error(`Could not build a ranking for "${custom}". Check the spelling, or leave the secret word empty for a random one.`);
+        }
         broadcast({ type: 'server_error', message: 'Could not reach the word-similarity service, using a backup word instead.' });
-        puzzle = buildPuzzleFromFallback(pickRandom(Object.keys(FALLBACK_PUZZLES)));
+        puzzle = buildPuzzleFromFallback(custom || pickRandom(Object.keys(FALLBACK_PUZZLES)));
       }
+    } else {
+      // Test and Offline both use the built-in word list, so they work with no internet.
+      const word = custom && FALLBACK_PUZZLES[custom] ? custom : pickFallbackWordByRandomLength();
+      puzzle = buildPuzzleFromFallback(word);
     }
 
     if (!puzzle) throw new Error('Could not build a puzzle for that word.');
 
+    clearInterval(testAutoplayTimer);
+    state.autoplay.running = false;
+
     rankMap = puzzle.map;
     orderedWords = puzzle.order;
 
-    state.game.active = true;
-    state.game.difficulty = difficulty;
-    state.game.targetWord = puzzle.target;
-    state.game.targetLength = puzzle.target.length;
-    state.game.hintsGiven = [];
-    state.game.hintsUsed = 0;
-    state.game.guesses = [];
-    state.game.closestByWord = new Map();
-    state.game.allGuessedWords = new Map();
-    state.game.tierHistory = [];
-    state.game.winner = null;
-    state.game.startedAt = Date.now();
-    state.game.uniquePlayers = new Set();
-    state.game.extendedRankMap = new Map();
-    state.game.nextExtendedRank = orderedWords.length + 1;
+    const g = state.game;
+    state.mode = mode;
+    g.active = true;
+    g.difficulty = mode === 'live' ? difficulty : null;
+    g.targetWord = puzzle.target;
+    g.board = new Map();
+    g.allGuessedWords = new Map();
+    g.totalGuesses = 0;
+    g.latest = null;
+    g.winner = null;
+    g.result = null;
+    g.startedAt = Date.now();
+    g.uniquePlayers = new Set();
+    g.extendedRankMap = new Map();
+    // Unrelated-but-real words are always ranked past 1500 (the red zone), even
+    // when the built-in list for a word is short — otherwise they'd land in
+    // the green zone and earn points they haven't earned.
+    g.nextExtendedRank = Math.max(orderedWords.length + 1, 1501);
 
-    broadcast({ type: 'game_started', targetLength: state.game.targetLength, mode, difficulty });
+    broadcast({ type: 'game_started', mode, difficulty: g.difficulty });
     pushState();
+
+    if (mode === 'test' && opts.autoplay) toggleTestAutoplay(true, opts.speed);
   } catch (err) {
     console.error('[START GAME ERROR]', err);
     broadcast({ type: 'server_error', message: 'Could not start the game: ' + safeMsg(err) });
   }
 }
 
-// Adaptive hint: reveal a word ranked roughly halfway between the
-// closest guess so far and the answer — this mirrors real Contexto's
-// "easy" hint behaviour instead of a fixed, unrelated ladder.
-function giveHint() {
-  if (!state.game.active) return;
-  const best = closestBoard(1)[0];
-  const bestRank = best ? best.rank : Math.min(1200, orderedWords.length);
-  if (bestRank <= 2) {
-    broadcast({ type: 'server_error', message: "You're already almost there — one more good guess should do it!" });
-    return;
-  }
-  const targetRank = Math.max(2, Math.floor(bestRank / 2));
-  let hintWord = null;
-  for (let r = targetRank; r >= 2; r--) {
-    const candidate = orderedWords[r - 1];
-    if (candidate && !state.game.hintsGiven.includes(candidate)) {
-      hintWord = candidate;
-      break;
-    }
-  }
-  if (!hintWord) {
-    broadcast({ type: 'server_error', message: 'No new hint available right now — try another guess first.' });
-    return;
-  }
-  state.game.hintsGiven.push(hintWord);
-  state.game.hintsUsed += 1;
-  broadcast({ type: 'hint_reveal', word: hintWord });
-  pushState();
-}
-
 function giveUp() {
   if (!state.game.active) return;
   const word = state.game.targetWord;
-  const payload = {
-    word,
-    guessesUsed: state.game.guesses.length,
-    hintsUsed: state.game.hintsUsed,
-    players: state.game.uniquePlayers.size,
-    tierHistory: state.game.tierHistory,
-  };
   finishRound(null, { gaveUp: true });
-  broadcast({ type: 'give_up', ...payload });
+  broadcast({ type: 'give_up', word });
 }
 
 function finishRound(winnerUser, opts = {}) {
-  const durationMs = state.game.startedAt ? Date.now() - state.game.startedAt : null;
-  state.roundHistory.push({
-    word: state.game.targetWord,
+  clearInterval(testAutoplayTimer);
+  state.autoplay.running = false;
+  const g = state.game;
+  g.active = false;
+  g.winner = winnerUser;
+  g.result = {
+    word: g.targetWord,
     winner: winnerUser,
-    guessesUsed: state.game.guesses.length,
-    players: state.game.uniquePlayers.size,
-    difficulty: state.game.difficulty,
     gaveUp: !!opts.gaveUp,
-    durationMs,
-  });
-  if (state.roundHistory.length > 30) state.roundHistory.shift();
-  state.game.active = false;
-  state.game.winner = winnerUser;
+    guesses: g.totalGuesses,
+    players: g.uniquePlayers.size,
+    points: opts.points || 0,
+    total: opts.total || 0,
+  };
 }
 
-function scoreForRank(rank) {
+// ------------------------------------------------------------
+// POINTS — deliberately small, so no single guess is a jackpot.
+//
+// Points are for DISCOVERY: a player earns them only when they are
+// the first to find a word in a round. Repeating a word someone
+// already found earns nothing, so pasting good words over and over
+// can't farm points. The busiest a single guess can ever pay is 10
+// (finding the secret word); most guesses pay 0-4.
+//
+// Format: [highest rank that still earns this many points, points].
+// Tweak the numbers below to re-balance the game.
+// ------------------------------------------------------------
+const POINTS_BY_RANK = [
+  [1, 10],     // the secret word itself
+  [2, 8],
+  [5, 7],
+  [10, 6],
+  [25, 5],
+  [50, 4],
+  [150, 3],
+  [300, 2],
+  [1500, 1],
+  // rank 1501+ (far off, red) earns 0
+];
+
+function pointsForRank(rank) {
   if (rank == null) return 0;
-  return Math.max(0, 1000 - rank);
+  for (const [maxRank, pts] of POINTS_BY_RANK) {
+    if (rank <= maxRank) return pts;
+  }
+  return 0;
 }
 
 function ensureLeaderboardEntry(user) {
-  if (!state.leaderboard[user]) state.leaderboard[user] = { score: 0, wins: 0, guesses: 0, seenWords: {} };
+  if (!state.leaderboard[user]) state.leaderboard[user] = { score: 0, wins: 0, guesses: 0 };
   return state.leaderboard[user];
-}
-
-function tierFor(rank) {
-  if (rank == null) return 'red';
-  if (rank === 1) return 'exact';
-  if (rank <= 50) return 'dark-green';
-  if (rank <= 300) return 'green';
-  if (rank <= 1500) return 'orange';
-  return 'red';
-}
-// Log-scaled "match" percentage — same non-linear scale the heat bar
-// uses client-side, computed here too so the recap/share text can use
-// a plain number without the browser re-deriving it.
-function matchPercent(rank) {
-  if (rank == null) return 0;
-  const MAX = 3000;
-  const pct = 100 * (1 - Math.log(rank) / Math.log(MAX));
-  return Math.max(0, Math.min(100, Math.round(pct)));
 }
 
 // Ranks a guessed word no matter how far it is from the target:
@@ -423,67 +410,55 @@ function resolveRank(word) {
 }
 
 function handleGuess(user, rawText, isHost = false) {
-  if (!state.game.active) return;
+  const g = state.game;
+  if (!g.active) return;
   const word = normalize((rawText || '').split(/\s+/)[0]);
   if (!word) return;
 
   const rank = resolveRank(word);
-  const alreadyBy = state.game.allGuessedWords.get(word);
-  const isRepeat = !!alreadyBy && alreadyBy.user !== user;
+  const prior = g.allGuessedWords.get(word); // first player to find it (host tests never count)
+  const isRepeat = !!prior && prior.user !== user;
+  const isWin = rank === 1;
+
+  let points = 0;
+  let total = 0;
+  if (!isHost) {
+    const lb = ensureLeaderboardEntry(user);
+    lb.guesses += 1;
+    if (!prior && rank != null) {
+      points = pointsForRank(rank);
+      lb.score += points;
+    }
+    if (isWin) lb.wins += 1;
+    total = lb.score;
+    if (!prior) g.allGuessedWords.set(word, { user });
+    g.uniquePlayers.add(user);
+  }
+
   const entry = {
-    user, word, rank, isHost, isWin: rank === 1, ts: Date.now(),
-    percent: matchPercent(rank),
+    user, word, rank, isHost, isWin, ts: Date.now(),
     isRepeat,
-    repeatOf: isRepeat ? alreadyBy.user : null,
+    repeatOf: isRepeat ? prior.user : null,
+    points,
+    total,
   };
 
-  if (!alreadyBy) state.game.allGuessedWords.set(word, { user, rank });
-  if (!isHost) state.game.tierHistory.push(tierFor(rank));
+  g.totalGuesses += 1;
+  g.latest = entry;
 
-  state.game.guesses.push(entry);
-  if (state.game.guesses.length > 300) state.game.guesses.shift();
-  if (!isHost) state.game.uniquePlayers.add(user);
-
+  // One row per distinct word; a real player's find replaces a host test entry.
   if (rank != null) {
-    const existing = state.game.closestByWord.get(word);
-    if (!existing || rank < existing.rank) {
-      state.game.closestByWord.set(word, { user, word, rank, ts: entry.ts });
-    }
-
-    if (!isHost) {
-      const lb = ensureLeaderboardEntry(user);
-      lb.guesses += 1;
-      // Only award points the first time THIS user finds THIS word this
-      // round — stops someone farming points by pasting the same good
-      // guess over and over.
-      if (!lb.seenWords[`${state.game.targetWord}:${word}`]) {
-        lb.seenWords[`${state.game.targetWord}:${word}`] = true;
-        lb.score += scoreForRank(rank);
-      }
-    }
+    const existing = g.board.get(word);
+    if (!existing || (existing.isHost && !isHost)) g.board.set(word, entry);
   }
 
-  broadcast({ type: 'guess', entry });
+  broadcast({ type: 'guess', entry, totalGuesses: g.totalGuesses, players: g.uniquePlayers.size });
 
-  if (entry.isWin && state.game.active) {
-    if (!isHost) {
-      const lb = ensureLeaderboardEntry(user);
-      lb.wins += 1;
-      lb.score += Math.max(0, 250 - state.game.guesses.length); // speed bonus
-    }
-    finishRound(user);
-    broadcast({
-      type: 'win',
-      user,
-      word: state.game.targetWord,
-      guessesUsed: state.game.guesses.length,
-      hintsUsed: state.game.hintsUsed,
-      players: state.game.uniquePlayers.size,
-      tierHistory: state.game.tierHistory,
-    });
+  if (isWin) {
+    finishRound(user, { points, total });
+    broadcast({ type: 'win', user, word: g.targetWord, guessesUsed: g.totalGuesses, points, total });
+    pushState();
   }
-
-  pushState();
 }
 
 // ============================================================
@@ -553,7 +528,6 @@ async function connectTikTok(username, attempt = 1) {
     }
 
     tiktokConn = new ConnClass(username, options);
-    state.mode = 'live';
 
     tiktokConn.on(EVT.CHAT, (data) => {
       try {
@@ -572,7 +546,9 @@ async function connectTikTok(username, attempt = 1) {
           rawSamples: state.diagnostics.rawSamples,
         });
 
-        handleGuess(user, text, false);
+        // Chat only counts as guesses during a Live round; Test and Offline
+        // rounds ignore whatever the connected chat is saying.
+        if (state.mode === 'live') handleGuess(user, text, false);
       } catch (err) {
         console.error('[CHAT HANDLER ERROR]', err);
       }
@@ -620,8 +596,8 @@ function disconnectTikTok() {
 // ============================================================
 // 6. TEST MODE SIMULATOR — no login, no external connection
 // ============================================================
-let testAutoplayTimer = null;
 const FAKE_USERS = ['viewer_247', 'wordwiz', 'contexto_fan', 'guess_master', 'nightowl', 'tiktoker99', 'lurker_lisa', 'chatty_chris'];
+const AUTOPLAY_MS = { slow: 2600, normal: 1400, fast: 700 };
 
 function simulateChatMessage(username, text) {
   state.diagnostics.rawEventCount += 1;
@@ -635,17 +611,27 @@ function simulateChatMessage(username, text) {
   handleGuess(username, text, false);
 }
 
-function toggleTestAutoplay(on) {
+function autoplayTick() {
+  if (!state.game.active) {
+    clearInterval(testAutoplayTimer);
+    state.autoplay.running = false;
+    return;
+  }
+  // Prefer words nobody has guessed yet so the board keeps filling up.
+  const fresh = orderedWords.slice(1, 60).filter((w) => !state.game.allGuessedWords.has(w));
+  const guess = (!fresh.length || Math.random() < 0.06) ? state.game.targetWord : pickRandom(fresh);
+  simulateChatMessage(pickRandom(FAKE_USERS), guess);
+}
+
+function toggleTestAutoplay(on, speed) {
   clearInterval(testAutoplayTimer);
-  if (!on || !state.game.active) return;
-  const pool = orderedWords.length ? orderedWords : ['hello', 'test', 'word'];
-  testAutoplayTimer = setInterval(() => {
-    if (!state.game.active) { clearInterval(testAutoplayTimer); return; }
-    const guess = Math.random() < 0.12
-      ? state.game.targetWord
-      : pickRandom(pool.slice(0, Math.min(pool.length, 35)));
-    simulateChatMessage(pickRandom(FAKE_USERS), guess);
-  }, 1400);
+  state.autoplay.running = false;
+  if (AUTOPLAY_MS[speed]) state.autoplay.speed = speed;
+  if (on && state.game.active && state.mode === 'test') {
+    state.autoplay.running = true;
+    testAutoplayTimer = setInterval(autoplayTick, AUTOPLAY_MS[state.autoplay.speed]);
+  }
+  pushState();
 }
 
 // ============================================================
@@ -655,32 +641,39 @@ function handleClientMessage(msg, ws) {
   switch (msg.type) {
     case 'connect_tiktok':
       if (!msg.username) return safeSend(ws, { type: 'server_error', message: 'Please enter a TikTok username first.' });
-      connectTikTok(msg.username.replace(/^@/, '').trim());
+      connectTikTok(String(msg.username).replace(/^@/, '').trim());
       break;
     case 'disconnect_tiktok':
       disconnectTikTok();
       break;
     case 'start_game':
-      startGame(msg.mode === 'test' ? 'test' : 'live', { word: msg.word, difficulty: msg.difficulty });
-      break;
-    case 'hint':
-      giveHint();
+      startGame(MODES.includes(msg.mode) ? msg.mode : 'live', {
+        word: msg.word,
+        difficulty: msg.difficulty,
+        length: msg.length,
+        autoplay: !!msg.autoplay,
+        speed: msg.speed,
+      });
       break;
     case 'give_up':
       giveUp();
       pushState();
       break;
-    case 'host_comment':
-      broadcast({ type: 'host_message', text: msg.text });
-      break;
     case 'host_guess':
-      handleGuess('HOST', msg.text, true);
+      // Offline rounds: the host types guesses on behalf of real players,
+      // so they are named and scored. Live/Test: a host entry is a test
+      // guess that never scores.
+      if (state.mode === 'offline') {
+        handleGuess(String(msg.name || '').trim().slice(0, 24) || 'Player', msg.text, false);
+      } else {
+        handleGuess('HOST', msg.text, true);
+      }
       break;
     case 'simulate_chat':
       simulateChatMessage(msg.username || pickRandom(FAKE_USERS), msg.text);
       break;
     case 'test_autoplay':
-      toggleTestAutoplay(!!msg.on);
+      toggleTestAutoplay(!!msg.on, msg.speed);
       break;
     default:
       safeSend(ws, { type: 'server_error', message: 'Unknown action: ' + msg.type });

@@ -85,35 +85,44 @@ address at the top of the page, like `https://contexto-live.onrender.com`
 ## Step 4 — Play
 
 1. Open your Render web address on your phone (bookmark it).
-2. At the top is a small status bar — it will say **"Not connected"**.
+2. At the top is a small status bar — it will say **"Not connected yet"**.
    Tap it any time to see live diagnostics (see below).
-3. In the box at the bottom, type your TikTok username (without the `@`)
-   and tap **Connect**. Do this once you're already LIVE on TikTok.
-4. Pick a difficulty (**Easy / Medium / Hard**) and tap **🎲 New live word**
-   to start a round using a real word and your real chat, or tap
-   **🧪 Test mode** to try the whole game instantly with fake chat
-   messages — no TikTok connection needed, useful for rehearsing or
-   checking things still work after any change.
-5. As people type guesses in your TikTok chat, they appear on screen with
-   a colored bar showing how close they are — the same green / orange /
-   red scale the real Contexto game uses:
-   - 🟩 **Dark green** — rank 1–50, extremely close
+3. Open **Settings** and pick a mode with the **Live / Test / Offline**
+   switch:
+   - **Live** — reads your real TikTok LIVE chat. Type your TikTok username
+     (without the `@`) and tap **Connect** once you're already LIVE. Then
+     choose a **Difficulty**, a **Word length** (Any / Short / Medium / Long)
+     and, if you like, type your own **Secret word** (leave it empty for a
+     random one).
+   - **Test** — rehearse with fake viewers, no TikTok needed. Pick a secret
+     word (or Random), switch **Simulated chat** on or off, and choose its
+     **Speed**.
+   - **Offline** — no TikTok and no internet. You type each guess yourself,
+     with the player's name, in the box at the bottom. Pick a secret word
+     (or Random).
+   Your choices are remembered on this phone for next time.
+4. Tap **Start round**. Settings fold away so the game has the whole screen;
+   tap **Settings** any time to open them again.
+5. Guesses appear in **Live guesses**, and the list keeps itself sorted:
+   the closest word is always on top, and rows slide into place as new
+   guesses come in. The single **Latest** line above it always shows the
+   most recent guess, even if it's a repeat or not a real word. Each row
+   has a colored bar and a rank number — the same green / orange / red
+   scale the real Contexto game uses:
+   - 🟩 **Dark green** — rank 2–50, extremely close
    - 🟢 **Green** — rank 51–300, close
    - 🟠 **Orange** — rank 301–1500, same general territory
    - 🔴 **Red** — rank 1500+ or not found, far off
    - 🥇 **Gold "EXACT"** — the winning word
-6. Tap **💡 Hint** any time — it reveals a word about halfway between the
-   closest guess so far and the answer, the same way the real game's
-   hints work. Tap **🏳 Reveal** to end the round early and show everyone
-   the answer.
-7. Use the text box in the control bar to either:
-   - **💬** post something as a visible "host comment" on screen (for
-     announcements or answering questions), or
-   - **▶** submit it as a real test guess, to check the game is scoring
-     correctly.
-8. Tap **📋 Copy recap** to copy a short summary of the round to your
-   clipboard — handy for a caption or a follow-up post.
-9. Tap **🔁 New round** to return to setup and start again.
+6. **Enter a word** at the bottom lets you submit a guess yourself. In Live
+   and Test rounds it shows up as a "HOST" test guess and never scores. In
+   Offline rounds it's how you enter everyone's guesses, so it also asks
+   for the player's name and those guesses do score. Tap the bar to fold it
+   away when you don't need it.
+7. Tap **End round** (twice, so you can't hit it by accident) to stop early
+   and show everyone the answer. When a round is over the same button
+   turns into **New round** — one tap starts another round with your
+   current settings.
 
 ---
 
@@ -151,7 +160,8 @@ Tap the bar to expand it and see:
   This needs the server to have internet access, which Render provides
   automatically. If that service is briefly unreachable, the app
   automatically falls back to one of its built-in backup words so the
-  round still starts.
+  round still starts. (If you typed your own secret word and it can't be
+  ranked, you'll get a message instead of a surprise word.)
 - Trivial inflections of the target (like "coffees" for "coffee") are
   filtered out of the ranking so they don't hand out a cheap near-exact
   slot right next to the real answer.
@@ -159,32 +169,43 @@ Tap the bar to expand it and see:
   but has nothing to do with the target, it still gets a real rank
   number (it just lands in the red "far off" zone) instead of being
   brushed aside — only text that isn't a recognized word at all (typos,
-  gibberish) is left unranked and tagged "not a word."
-- **The secret word's length is randomized every round**, anywhere from
-  4 to 15 letters, and it's never shown up front — there are no letter
-  boxes revealing how long the word is. Chat has to guess it blind, the
-  same way other online Contexto-style games work.
-- Test mode uses a small built-in word list instead, so it works even
-  with no internet and no TikTok connection at all.
-- **Scoring**: each guess earns points based on how close its rank is
-  (closer = more points, exactly like the real Contexto). To stop
-  someone from farming points by pasting the same good word over and
-  over, a player only earns points the *first* time they find a given
-  word in a given round — repeating it still shows up in the feed
-  (tagged "already guessed"), but won't inflate their score. Winning
-  also adds a small speed bonus for finishing in fewer guesses.
-- **Share recap**: after a round ends, "Copy recap" produces a
-  Wordle-style colored-square summary (🟩 close, 🟧 same territory,
-  🟥 far) plus the word, guess count, and hints used — ready to paste
-  as a caption or comment.
-- **Round history** keeps a running log of the last several rounds
-  (word, winner, guess count, players) so you and your audience can see
-  progress across a stream.
+  gibberish) is left unranked and tagged "not a word." Those show in the
+  **Latest** line but not in the sorted list.
+- **One row per word.** If several people guess the same word it appears
+  once in Live guesses, next to whoever found it first.
+- **The secret word is never shown up front.** With **Word length** on
+  "Any", its length is randomized every round from 4 to 15 letters, and
+  there are no letter boxes revealing how long it is.
+- Test and Offline rounds use a small built-in word list instead, so they
+  work with no internet at all.
+- **Points are small on purpose.** You earn points only when you are the
+  first person to find a word in a round, so repeating a word someone
+  already found earns nothing (it shows a small "↺" tag with their name).
+  The most a single guess can ever pay is 10:
+
+  | Rank of the word | Points |
+  |---|---|
+  | 1 — the secret word | 10 |
+  | 2 | 8 |
+  | 3–5 | 7 |
+  | 6–10 | 6 |
+  | 11–25 | 5 |
+  | 26–50 | 4 |
+  | 51–150 | 3 |
+  | 151–300 | 2 |
+  | 301–1500 | 1 |
+  | 1501+ or not a word | 0 |
+
+  Points appear as a small gold **+N** on each guess, and the winner's
+  total is shown in the win banner. Totals are kept for the whole session
+  (they reset if the app restarts). Host test guesses never score. To
+  re-balance the game, edit the `POINTS_BY_RANK` table near the top of the
+  game-logic section of `server.js`.
 - **Viewer count** appears next to the connection status once TikTok
   starts sending it — not every stream reports it right away.
-- Scores and history reset if the app restarts (for example, after a
-  Render redeploy). This is intentional to keep the app simple and
-  fast — nothing is stored in an external database.
+- Nothing is stored in an external database — restarting the app (for
+  example, after a Render redeploy) clears scores. Your settings (username,
+  difficulty, etc.) are saved in your phone's browser, not on the server.
 - If TikTok changes something and the connection library falls behind,
   the diagnostics drawer described above is exactly what will show you
   what changed, without needing to read any code.
