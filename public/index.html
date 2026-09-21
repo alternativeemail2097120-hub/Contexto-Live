@@ -6,17 +6,19 @@
 <title>Contexto LIVE — TikTok Chat Game</title>
 <link rel="stylesheet" href="style.css" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
 
 <div id="app">
 
-  <!-- ===== TOP: diagnostics drawer (requirement #3) ===== -->
+  <!-- ===== TOP: status + diagnostics drawer ===== -->
   <header id="diagnostics">
     <button id="diagBtn" class="diag-toggle" aria-expanded="false">
       <span id="connDot" class="dot dot-idle"></span>
-      <span id="connLabel">Not connected</span>
+      <span id="connLabel">Not connected yet</span>
+      <span id="modeBadge" class="mode-badge hidden"></span>
+      <span id="viewerChip" class="viewer-chip hidden">👁 <span id="viewerCount">0</span></span>
       <span class="diag-caret">▾</span>
     </button>
     <div id="diagPanel" class="diag-panel hidden">
@@ -35,16 +37,29 @@
     <section class="hero">
       <h1 class="wordmark">Contexto <span>LIVE</span></h1>
       <p id="heroSub" class="hero-sub">Set up your connection below to start a round.</p>
-      <div id="lengthChip" class="length-chip hidden"></div>
+      <div id="letterTiles" class="letter-tiles hidden"></div>
+      <div id="statsRow" class="stats-row hidden">
+        <span id="statGuesses">0 guesses</span>
+        <span class="dot-sep">·</span>
+        <span id="statPlayers">0 players</span>
+        <span id="statDiff" class="diff-chip hidden"></span>
+      </div>
     </section>
 
     <section id="winBanner" class="win-banner hidden">
-      🎉 <strong id="winnerName"></strong> found it: <strong id="winWord"></strong>!
+      <div id="winConfetti" class="confetti"></div>
+      <span id="winIcon">🎉</span>
+      <strong id="winnerName"></strong> found it — <strong id="winWord"></strong>!
+      <span id="winMeta" class="win-meta"></span>
+    </section>
+
+    <section id="giveUpBanner" class="give-up-banner hidden">
+      Round ended. The word was <strong id="giveUpWord"></strong>.
     </section>
 
     <section class="board">
       <div class="board-head">
-        <h2>Guesses</h2>
+        <h2>Live guesses</h2>
         <span id="guessCount" class="muted">0 guesses</span>
       </div>
       <div id="guessList" class="guess-list">
@@ -54,30 +69,38 @@
 
     <section class="side-panels">
       <div class="panel">
-        <h3>🔥 Closest so far</h3>
+        <h3>🏅 Ranked board</h3>
+        <p class="panel-sub">Best distinct guesses this round</p>
         <ol id="closestList" class="mini-list"><li class="muted">No guesses yet</li></ol>
       </div>
       <div class="panel">
         <h3>🏆 Top scores</h3>
+        <p class="panel-sub">Across this whole session</p>
         <ol id="leaderboardList" class="mini-list"><li class="muted">No scores yet</li></ol>
       </div>
     </section>
 
     <section class="hints">
       <div class="hints-head">
-        <h3>Hints</h3>
-        <span id="hintsRemaining" class="muted">0 left</span>
+        <h3>💡 Hints</h3>
+        <span id="hintsUsed" class="muted">0 used</span>
       </div>
       <div id="hintList" class="hint-chips"></div>
+      <p id="hintEmpty" class="empty-hint-small">Tap Hint below if chat gets stuck.</p>
+    </section>
+
+    <section id="historyPanel" class="history-panel hidden">
+      <h3>📜 Round history</h3>
+      <div id="historyList" class="history-list"></div>
     </section>
 
     <section id="hostFeed" class="host-feed hidden">
-      <h3>Host comments</h3>
+      <h3>💬 Host comments</h3>
       <div id="hostMessages"></div>
     </section>
   </main>
 
-  <!-- ===== BOTTOM: sticky host control dock (requirement #7) ===== -->
+  <!-- ===== BOTTOM: sticky host control dock ===== -->
   <nav id="controlDock" class="control-dock">
 
     <div id="tabSetup" class="dock-tab">
@@ -86,6 +109,11 @@
         <button id="connectBtn" class="btn btn-primary">Connect</button>
       </div>
       <div class="field-row">
+        <select id="difficultySelect" class="select">
+          <option value="easy">Easy</option>
+          <option value="medium" selected>Medium</option>
+          <option value="hard">Hard</option>
+        </select>
         <button id="startLiveBtn" class="btn btn-outline">🎲 New live word</button>
         <button id="startTestBtn" class="btn btn-ghost">🧪 Test mode</button>
       </div>
@@ -99,7 +127,9 @@
       </div>
       <div class="field-row">
         <button id="hintBtn" class="btn btn-outline">💡 Hint</button>
-        <button id="autoplayBtn" class="btn btn-ghost hidden">▶ Autoplay demo</button>
+        <button id="giveUpBtn" class="btn btn-ghost">🏳 Reveal</button>
+        <button id="autoplayBtn" class="btn btn-ghost hidden">▶ Autoplay</button>
+        <button id="shareBtn" class="btn btn-ghost">📋 Copy recap</button>
         <button id="newRoundBtn" class="btn btn-primary">🔁 New round</button>
         <button id="disconnectBtn" class="btn btn-ghost hidden">Disconnect</button>
       </div>

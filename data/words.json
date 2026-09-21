@@ -1,13 +1,21 @@
-[
-  "apple", "ocean", "mountain", "coffee", "music", "computer", "phone", "garden",
-  "river", "forest", "bridge", "castle", "dragon", "robot", "pizza", "guitar",
-  "bicycle", "camera", "rainbow", "thunder", "volcano", "desert", "island",
-  "planet", "galaxy", "rocket", "dinosaur", "butterfly", "elephant", "tiger",
-  "wolf", "eagle", "dolphin", "shark", "snake", "spider", "chocolate",
-  "birthday", "wedding", "holiday", "winter", "summer", "autumn", "rain",
-  "snow", "wind", "fire", "ice", "gold", "diamond", "silver", "king", "queen",
-  "knight", "wizard", "pirate", "ninja", "superhero", "movie", "football",
-  "basketball", "sunrise", "sunset", "beach", "candle", "library", "airport",
-  "train", "kitchen", "hospital", "school", "farmer", "sailor", "painter",
-  "singer", "teacher"
-]
+{
+  "easy": [
+    "apple", "coffee", "music", "phone", "beach", "pizza", "school", "family",
+    "summer", "winter", "birthday", "chocolate", "football", "movie", "garden",
+    "kitchen", "computer", "guitar", "bicycle", "rainbow", "candle", "airport",
+    "hospital", "farmer", "teacher", "sunrise", "sunset", "camera", "bakery"
+  ],
+  "medium": [
+    "ocean", "mountain", "river", "forest", "bridge", "castle", "volcano",
+    "desert", "island", "planet", "galaxy", "rocket", "dinosaur", "butterfly",
+    "elephant", "tiger", "wolf", "eagle", "dolphin", "shark", "snake", "spider",
+    "wedding", "holiday", "thunder", "gold", "diamond", "silver", "knight",
+    "library", "train", "sailor", "painter", "singer"
+  ],
+  "hard": [
+    "nostalgia", "serendipity", "momentum", "paradox", "algorithm", "gravity",
+    "philosophy", "democracy", "renaissance", "quantum", "empire",
+    "melancholy", "resilience", "bureaucracy", "symphony", "labyrinth",
+    "equilibrium", "wanderlust", "solitude", "ambition", "legacy"
+  ]
+}
