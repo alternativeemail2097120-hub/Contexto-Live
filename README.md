@@ -114,12 +114,17 @@ address at the top of the page, like `https://contexto-live.onrender.com`
    - 🟠 **Orange** — rank 301–1500, same general territory
    - 🔴 **Red** — rank 1500+ or not found, far off
    - 🥇 **Gold "EXACT"** — the winning word
-6. **Enter a word** at the bottom lets you submit a guess yourself. In Live
+6. **Fullscreen.** Tap the corner-arrows button at the top right to go
+   fullscreen, and tap it again (or press Esc) to leave. The game keeps its
+   normal width and stays centered, so nothing is stretched. On an iPhone,
+   Safari doesn't allow fullscreen for web pages: tap **Share → Add to Home
+   Screen** and open the game from your home screen instead.
+7. **Enter a word** at the bottom lets you submit a guess yourself. In Live
    and Test rounds it shows up as a "HOST" test guess and never scores. In
    Offline rounds it's how you enter everyone's guesses, so it also asks
    for the player's name and those guesses do score. Tap the bar to fold it
    away when you don't need it.
-7. Tap **End round** (twice, so you can't hit it by accident) to stop early
+8. Tap **End round** (twice, so you can't hit it by accident) to stop early
    and show everyone the answer. When a round ends — someone finds the word
    or you end it — a floating window shows the answer (ranked #1) and the
    guessed-words list stays on screen. Both stay until you start the next
@@ -167,6 +172,13 @@ Tap the bar to expand it and see:
 - Trivial inflections of the target (like "coffees" for "coffee") are
   filtered out of the ranking so they don't hand out a cheap near-exact
   slot right next to the real answer.
+- **A very large dictionary.** To decide what counts as a real English word,
+  the game merges several word lists: the built-in one (about 275,000
+  words) plus large public lists that the server downloads once when it
+  starts. Junk in those lists (stray letters, capitalised names,
+  hyphenated fragments) is filtered out. The status drawer shows the
+  exact **Dictionary** total, and the goal is 400,000 or more. See
+  "Growing the dictionary" below.
 - **Every real word gets ranked.** If a guess is a genuine English word
   but has nothing to do with the target, it still gets a real rank
   number (it just lands in the red "far off" zone) instead of being
@@ -180,29 +192,28 @@ Tap the bar to expand it and see:
   there are no letter boxes revealing how long it is.
 - Test and Offline rounds use a small built-in word list instead, so they
   work with no internet at all.
-- **Points are small on purpose.** You earn points only when you are the
-  first person to find a word in a round, so repeating a word someone
-  already found earns nothing (it shows a small "↺" tag with their name).
-  The most a single guess can ever pay is 10:
+- **Points are small on purpose.** Only the closest ten words score, and
+  you earn points only when you are the first person to find a word in a
+  round:
 
   | Rank of the word | Points |
   |---|---|
-  | 1 — the secret word | 10 |
-  | 2 | 8 |
-  | 3–5 | 7 |
-  | 6–10 | 6 |
-  | 11–25 | 5 |
-  | 26–50 | 4 |
-  | 51–150 | 3 |
-  | 151–300 | 2 |
-  | 301–1500 | 1 |
-  | 1501+ or not a word | 0 |
+  | 1 — the secret word | 5 |
+  | 2 | 4 |
+  | 3 | 3 |
+  | 4–5 | 2 |
+  | 6–10 | 1 |
+  | 11 or further, or not a word | 0 |
 
   Points appear as a small gold **+N** on each guess, and the winner's
   total is shown in the win banner. Totals are kept for the whole session
   (they reset if the app restarts). Host test guesses never score. To
   re-balance the game, edit the `POINTS_BY_RANK` table near the top of the
   game-logic section of `server.js`.
+- **"Already guessed."** If a word was already guessed earlier in the round,
+  the **Latest** line shows an **Already guessed** tag instead of points
+  (hover it to see who guessed it first). Repeats never add a new row to
+  the list and never score.
 - **Viewer count** appears next to the connection status once TikTok
   starts sending it — not every stream reports it right away.
 - Nothing is stored in an external database — restarting the app (for
@@ -211,6 +222,29 @@ Tap the bar to expand it and see:
 - If TikTok changes something and the connection library falls behind,
   the diagnostics drawer described above is exactly what will show you
   what changed, without needing to read any code.
+
+---
+
+## Growing the dictionary
+
+Tap the status bar at the top of the game and look at the **Dictionary**
+line. It shows how many words the game knows. Right after a restart it
+says "Loading…" for a few seconds while the big lists download; then it
+shows the final total. If the total is **400,000 or more**, you're done.
+
+If it says **"under 400,000"**, one of the downloads didn't work (check the
+`[dictionary]` lines in Render's **Logs** to see which). You can add words
+yourself in either of two ways:
+
+- **Upload a list.** Create a folder `data/dictionaries` in your GitHub
+  repository and upload any plain-text word list there (a `.txt` file with
+  one word per line). Every `.txt` file in that folder is merged in
+  automatically on the next start.
+- **Point to a list online.** In Render, add an environment variable named
+  `WORD_LIST_URLS` and set it to the web address of a plain-text word list
+  (use commas to separate several). The server downloads it on startup.
+
+Nothing else needs to change.
 
 ---
 
@@ -224,9 +258,9 @@ running an old-looking page (for example, old panels showing "undefined").
 To check what's running:
 
 1. Tap the status bar at the top of the game — the drawer shows a
-   **Page version** line. The current version is **2**.
+   **Page version** line. The current version is **3**.
 2. In Render, open your service's **Logs**. Right after each start you'll
-   see three lines like `[ui] index.html <- public/index.html (version 2)`.
+   see three lines like `[ui] index.html <- public/index.html (version 3)`.
    If it says **version 0**, the old page files are still in your GitHub
    repository — upload the new `index.html`, `client.js` and `style.css`
    into the `public` folder again.

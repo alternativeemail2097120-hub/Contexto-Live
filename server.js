@@ -11,23 +11,128 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { WebSocketServer } = require('ws');
 
-// Full English dictionary (~275k words) used so that ANY real word a
-// player guesses gets an actual rank, even when it has nothing to do
-// with the target — it just lands far away (red). Only text that isn't
-// a recognized English word at all is left unranked ("not a word").
-// This mirrors how the real Contexto ranks its whole vocabulary rather
-// than only a shortlist of closely related words.
-const ENGLISH_WORDS = new Set(
-  fs.readFileSync(
-    (require('word-list').default) || require('word-list'),
-    'utf8'
-  )
-    .split('\n')
-    .map((w) => w.toLowerCase().trim())
-    .filter(Boolean)
-);
+// ------------------------------------------------------------
+// ENGLISH DICTIONARY
+// Used so that ANY real word a player guesses gets an actual rank, even
+// when it has nothing to do with the target — it just lands far away
+// (red). Text that isn't a recognized word is left unranked ("not a
+// word"). This mirrors how the real Contexto ranks its whole vocabulary
+// rather than only a shortlist of closely related words.
+//
+// The dictionary is merged from several sources:
+//   1. the bundled `word-list` package (about 275,000 words) — loaded
+//      instantly, so the game works the moment the server starts
+//   2. any .txt files you drop into data/dictionaries/ (one word per line)
+//   3. large public word lists, downloaded once when the server starts
+//      (and remembered in a temporary file so restarts are quick)
+// The total is printed in the logs and shown in the status drawer.
+// ------------------------------------------------------------
+const DICTIONARY_TARGET = 400000;
+const ENGLISH_WORDS = new Set();
+const dictionary = { total: 0, target: DICTIONARY_TARGET, status: 'loading' };
+
+const TWO_LETTER_WORDS = new Set(('aa ab ad ae ag ah ai al am an ar as at aw ax ay ba be bi bo by ca ch da de do ' +
+  'ea ed ee ef eh el em en er es ex fa fe fy gi go gu ha he hi hm ho id if in io is it jo ka ki la li lo ma me mi ' +
+  'mm mo mu my na ne no nu od oe of oh oi ok om on oo op or os ou ow ox oy pa pe pi po qi re sh si so st ta te ti ' +
+  'to uh um un up us ut we wo xi xu ya ye yo yu za zo').split(' '));
+
+// Adds every usable word in `text` (one per line) and returns how many
+// were new. Big public lists contain junk (stray letters, capitalised
+// proper names, hyphenated fragments), so entries are filtered: letters
+// a-z only, single letters must be "a" or "i", and 2-letter entries must
+// be real 2-letter words. With `strict`, capitalised entries (proper
+// nouns, acronyms) are skipped too.
+function addWords(text, { strict = false } = {}) {
+  let added = 0;
+  for (const line of text.split(/\r?\n/)) {
+    const raw = line.trim();
+    if (!raw) continue;
+    if (strict && raw !== raw.toLowerCase()) continue;
+    const w = raw.toLowerCase();
+    if (!/^[a-z]+$/.test(w)) continue;
+    if (w.length === 1 && w !== 'a' && w !== 'i') continue;
+    if (w.length === 2 && !TWO_LETTER_WORDS.has(w)) continue;
+    if (!ENGLISH_WORDS.has(w)) { ENGLISH_WORDS.add(w); added++; }
+  }
+  dictionary.total = ENGLISH_WORDS.size;
+  return added;
+}
+
+const DICT_DIR = path.join(__dirname, 'data', 'dictionaries');
+const DICT_CACHE_FILE = path.join(os.tmpdir(), 'contexto-english-words.v1.txt');
+
+// 1) bundled list  2) your own .txt files  3) list remembered from last download
+try {
+  addWords(fs.readFileSync((require('word-list').default) || require('word-list'), 'utf8'));
+} catch (err) {
+  console.error('[dictionary] could not load the bundled word list:', err.message);
+}
+try {
+  for (const file of fs.readdirSync(DICT_DIR)) {
+    if (!/\.txt$/i.test(file)) continue;
+    const added = addWords(fs.readFileSync(path.join(DICT_DIR, file), 'utf8'));
+    console.log(`[dictionary] data/dictionaries/${file}: +${added.toLocaleString('en-US')} words`);
+  }
+} catch { /* no data/dictionaries folder — that's fine */ }
+try {
+  if (fs.existsSync(DICT_CACHE_FILE)) {
+    const added = addWords(fs.readFileSync(DICT_CACHE_FILE, 'utf8'));
+    console.log(`[dictionary] remembered download: +${added.toLocaleString('en-US')} words`);
+  }
+} catch { /* ignore an unreadable cache */ }
+
+// Public word lists downloaded on startup. Each one is optional: if a
+// download fails the others still load. To add more without touching any
+// code, set WORD_LIST_URLS in Render to a comma-separated list of links to
+// plain-text word lists (one word per line).
+const REMOTE_DICTIONARIES = [
+  { name: 'dwyl/english-words', url: 'https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt', strict: true },
+  { name: 'Moby single words', url: 'https://www.gutenberg.org/files/3201/files/SINGLE.TXT', strict: true },
+];
+
+function finishDictionary() {
+  dictionary.total = ENGLISH_WORDS.size;
+  dictionary.status = 'ready';
+  const n = dictionary.total.toLocaleString('en-US');
+  if (dictionary.total >= DICTIONARY_TARGET) {
+    console.log(`[dictionary] ready: ${n} words`);
+  } else {
+    console.warn(`[dictionary] ready, but only ${n} words (goal: ${DICTIONARY_TARGET.toLocaleString('en-US')}). ` +
+      'See "Growing the dictionary" in the README to add more.');
+  }
+}
+
+async function loadRemoteDictionaries() {
+  if (dictionary.total >= DICTIONARY_TARGET) { finishDictionary(); return; }
+  const extra = String(process.env.WORD_LIST_URLS || '').split(',').map((u) => u.trim()).filter(Boolean)
+    .map((url) => ({ name: url, url, strict: false }));
+  let addedAny = false;
+  for (const src of [...REMOTE_DICTIONARIES, ...extra]) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 60000);
+      const res = await fetch(src.url, { signal: ctrl.signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      clearTimeout(timer);
+      const added = addWords(text, { strict: src.strict });
+      addedAny = addedAny || added > 0;
+      console.log(`[dictionary] ${src.name}: +${added.toLocaleString('en-US')} words (total ${dictionary.total.toLocaleString('en-US')})`);
+    } catch (err) {
+      console.warn(`[dictionary] could not download ${src.name}: ${err.message}`);
+    }
+  }
+  if (addedAny) {
+    try { fs.writeFileSync(DICT_CACHE_FILE, Array.from(ENGLISH_WORDS).join('\n')); } catch { /* read-only disk: skip */ }
+  }
+  finishDictionary();
+  pushState();
+}
+
+if (dictionary.total >= DICTIONARY_TARGET) finishDictionary();
 
 // ============================================================
 // 0. CRASH PROTECTION (never let one bad message kill the server)
@@ -150,6 +255,7 @@ function getPublicState() {
     viewerCount: state.viewerCount,
     autoplay: state.autoplay,
     diagnostics: state.diagnostics,
+    dictionary,
     wordChoices: WORD_CHOICES,
     game: {
       active: state.game.active,
@@ -387,28 +493,26 @@ function finishRound(winnerUser, opts = {}) {
 }
 
 // ------------------------------------------------------------
-// POINTS — deliberately small, so no single guess is a jackpot.
+// POINTS — deliberately small.
 //
-// Points are for DISCOVERY: a player earns them only when they are
-// the first to find a word in a round. Repeating a word someone
-// already found earns nothing, so pasting good words over and over
-// can't farm points. The busiest a single guess can ever pay is 10
-// (finding the secret word); most guesses pay 0-4.
+// Points are for DISCOVERY: a player earns them only when they are the
+// first to find a word in a round. Repeating a word someone already
+// found earns nothing, so pasting good words over and over can't farm
+// points. Only the closest ten words score at all:
+//   - the secret word (rank 1) is worth the most: 5 points
+//   - ranks 2 to 10 earn 4 down to 1 point, the closer the better
+//   - anything past rank 10 earns nothing
 //
 // Format: [highest rank that still earns this many points, points].
 // Tweak the numbers below to re-balance the game.
 // ------------------------------------------------------------
 const POINTS_BY_RANK = [
-  [1, 10],     // the secret word itself
-  [2, 8],
-  [5, 7],
-  [10, 6],
-  [25, 5],
-  [50, 4],
-  [150, 3],
-  [300, 2],
-  [1500, 1],
-  // rank 1501+ (far off, red) earns 0
+  [1, 5],      // the secret word itself
+  [2, 4],
+  [3, 3],
+  [5, 2],      // ranks 4-5
+  [10, 1],     // ranks 6-10
+  // rank 11 and beyond earns 0
 ];
 
 function pointsForRank(rank) {
@@ -449,7 +553,7 @@ function handleGuess(user, rawText, isHost = false) {
 
   const rank = resolveRank(word);
   const prior = g.allGuessedWords.get(word); // first player to find it (host tests never count)
-  const isRepeat = !!prior && prior.user !== user;
+  const isRepeat = !!prior; // someone already guessed this exact word this round
   const isWin = rank === 1;
 
   let points = 0;
@@ -718,4 +822,5 @@ function handleClientMessage(msg, ws) {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`TikTok Contexto server running on port ${PORT}`);
+  loadRemoteDictionaries().catch((err) => console.error('[dictionary] unexpected error:', err));
 });
