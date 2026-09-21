@@ -20,7 +20,10 @@ const { WebSocketServer } = require('ws');
 // This mirrors how the real Contexto ranks its whole vocabulary rather
 // than only a shortlist of closely related words.
 const ENGLISH_WORDS = new Set(
-  fs.readFileSync(require('word-list'), 'utf8')
+  fs.readFileSync(
+    (require('word-list').default) || require('word-list'),
+    'utf8'
+  )
     .split('\n')
     .map((w) => w.toLowerCase().trim())
     .filter(Boolean)
