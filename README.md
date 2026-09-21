@@ -120,9 +120,11 @@ address at the top of the page, like `https://contexto-live.onrender.com`
    for the player's name and those guesses do score. Tap the bar to fold it
    away when you don't need it.
 7. Tap **End round** (twice, so you can't hit it by accident) to stop early
-   and show everyone the answer. When a round is over the same button
-   turns into **New round** — one tap starts another round with your
-   current settings.
+   and show everyone the answer. When a round ends — someone finds the word
+   or you end it — a floating window shows the answer (ranked #1) and the
+   guessed-words list stays on screen. Both stay until you start the next
+   round. The same button turns into **New round**; one tap starts another
+   round with your current settings.
 
 ---
 
@@ -209,6 +211,29 @@ Tap the bar to expand it and see:
 - If TikTok changes something and the connection library falls behind,
   the diagnostics drawer described above is exactly what will show you
   what changed, without needing to read any code.
+
+---
+
+## If the page looks out of date
+
+The game is made of `server.js` (top level) plus three page files —
+`index.html`, `client.js` and `style.css` — that live in the **`public`**
+folder. If you update only some of them, you can end up with a new server
+running an old-looking page (for example, old panels showing "undefined").
+
+To check what's running:
+
+1. Tap the status bar at the top of the game — the drawer shows a
+   **Page version** line. The current version is **2**.
+2. In Render, open your service's **Logs**. Right after each start you'll
+   see three lines like `[ui] index.html <- public/index.html (version 2)`.
+   If it says **version 0**, the old page files are still in your GitHub
+   repository — upload the new `index.html`, `client.js` and `style.css`
+   into the `public` folder again.
+
+(If the three page files were accidentally uploaded to the top level next to
+`server.js`, the server notices and uses the newer copies.) After Render
+finishes deploying, reload the page once.
 
 ---
 
