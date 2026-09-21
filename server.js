@@ -51,6 +51,30 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
+// The three front-end files belong in the "public" folder. If a newer copy
+// was uploaded to the top level by mistake, use that one instead of quietly
+// serving an old copy from public/. Each file carries a UI_VERSION number;
+// the higher number wins, and public/ wins a tie. The startup log shows
+// exactly which copy is being served.
+const UI_FILES = ['index.html', 'client.js', 'style.css'];
+function uiVersion(file) {
+  try {
+    const m = fs.readFileSync(file, 'utf8').match(/UI_VERSION\s*[:=]\s*(\d+)/);
+    return m ? Number(m[1]) : 0;
+  } catch { return -1; } // file doesn't exist
+}
+const uiSource = {};
+for (const name of UI_FILES) {
+  const inPublic = path.join(__dirname, 'public', name);
+  const inRoot = path.join(__dirname, name);
+  uiSource[name] = uiVersion(inRoot) > uiVersion(inPublic) ? inRoot : inPublic;
+  console.log(`[ui] ${name} <- ${path.relative(__dirname, uiSource[name])} (version ${uiVersion(uiSource[name])})`);
+}
+app.get(['/', '/index.html', '/client.js', '/style.css'], (req, res) => {
+  const name = req.path === '/' ? 'index.html' : req.path.slice(1);
+  res.set('Cache-Control', 'no-cache'); // always fetch the latest page after a deploy
+  res.sendFile(uiSource[name]);
+});
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
@@ -332,9 +356,17 @@ async function startGame(mode, opts = {}) {
 
 function giveUp() {
   if (!state.game.active) return;
-  const word = state.game.targetWord;
+  const g = state.game;
+  const word = g.targetWord;
+  // Put the answer on the board as the #1 row, so the finished list reads
+  // top-down from the answer and stays on screen until the next round.
+  const answer = {
+    user: 'Answer', word, rank: 1, isHost: false, isWin: true, isReveal: true,
+    ts: Date.now(), isRepeat: false, repeatOf: null, points: 0, total: 0,
+  };
+  g.board.set(word, answer);
   finishRound(null, { gaveUp: true });
-  broadcast({ type: 'give_up', word });
+  broadcast({ type: 'give_up', word, entry: answer });
 }
 
 function finishRound(winnerUser, opts = {}) {
