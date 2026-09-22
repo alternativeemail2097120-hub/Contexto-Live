@@ -43,8 +43,8 @@ optional here.
    have one). Click **Create repository**.
 4. On the new repository's page, click **uploading an existing file**
    (a link in the middle of the page).
-5. Drag the **entire contents** of the project folder you were given
-   (all files and the `public` and `data` folders) into the upload box.
+5. Drag the **entire contents** of this project folder into the upload
+   box — all files, plus the `public` and `data` folders.
    - Make sure the folder structure stays intact: `server.js` at the top
      level, plus a `public` folder and a `data` folder inside it.
 6. Scroll down and click **Commit changes**.
@@ -87,49 +87,75 @@ address at the top of the page, like `https://contexto-live.onrender.com`
 1. Open your Render web address on your phone (bookmark it).
 2. At the top is a small status bar — it will say **"Not connected yet"**.
    Tap it any time to see live diagnostics (see below).
-3. Open **Settings** and pick a mode with the **Live / Test / Offline**
-   switch:
+3. Right below the status bar is the **action bar** — every control you
+   need lives here, always at the top, never at the bottom of the screen:
+   - **⚙️ Settings** — opens the panel where you pick a mode and its options.
+   - **💡 Hint** — see "Hints" below. Greyed out until a round is running.
+   - **⌨️ Enter a word** — opens the box where you (the host) can type a
+     guess yourself. Opening one panel folds the other away automatically,
+     so they never fight for space.
+   - **Start round / End round** — always visible, right there in the bar.
+4. In **Settings**, pick a mode with the **Live / Test / Offline** switch:
    - **Live** — reads your real TikTok LIVE chat. Type your TikTok username
      (without the `@`) and tap **Connect** once you're already LIVE. Then
-     choose a **Difficulty**, a **Word length** (Any / Short / Medium / Long)
-     and, if you like, type your own **Secret word** (leave it empty for a
-     random one).
+     choose a **Word length** (Any / Short / Medium / Long) and, if you
+     like, type your own **Secret word** (leave it empty for a random one).
+     There's no difficulty setting — Contexto is open to any word.
    - **Test** — rehearse with fake viewers, no TikTok needed. Pick a secret
      word (or Random), switch **Simulated chat** on or off, and choose its
      **Speed**.
    - **Offline** — no TikTok and no internet. You type each guess yourself,
-     with the player's name, in the box at the bottom. Pick a secret word
+     with the player's name, in the **Enter a word** box. Pick a secret word
      (or Random).
    Your choices are remembered on this phone for next time.
-4. Tap **Start round**. Settings fold away so the game has the whole screen;
-   tap **Settings** any time to open them again.
-5. Guesses appear in **Live guesses**, and the list keeps itself sorted:
-   the closest word is always on top, and rows slide into place as new
-   guesses come in. The single **Latest** line above it always shows the
-   most recent guess, even if it's a repeat or not a real word. Each row
-   has a colored bar and a rank number — the same green / orange / red
-   scale the real Contexto game uses:
+5. Tap **Start round**. Both panels fold away automatically so the game has
+   the whole screen; tap **⚙️ Settings** or **⌨️ Enter a word** any time to
+   open them again.
+6. Guesses appear in **Live guesses**, and the list keeps itself
+   continuously, automatically sorted: the closest word is always on top,
+   and rows glide into place the instant a new guess changes the order.
+   The single **Latest** line above it always shows the most recent guess,
+   even if it's a repeat or not a real word. Each row has a colored bar and
+   a rank number — the same green / orange / red scale the real Contexto
+   game uses:
    - 🟩 **Dark green** — rank 2–50, extremely close
    - 🟢 **Green** — rank 51–300, close
    - 🟠 **Orange** — rank 301–1500, same general territory
    - 🔴 **Red** — rank 1500+ or not found, far off
    - 🥇 **Gold "EXACT"** — the winning word
-6. **Fullscreen.** Tap the corner-arrows button at the top right to go
+   When a round ends — someone finds the word, or you end it — the board
+   **stays exactly as it is**, including the #1 exact-answer row, still
+   sorted top to bottom. Nothing disappears until you start the next round.
+7. **Hints.** Tap **💡 Hint** any time during a round to reveal the single
+   next-best word — the word ranked just above whatever the closest guess
+   found so far. It's unlimited (tap it as many times as you like) and it
+   will **never reveal the #1 answer itself**. A hinted word shows up in
+   Live guesses with a dashed gold border and "💡 Hint" in place of a
+   name — and if a real viewer later guesses that same word themselves,
+   it upgrades to their name and scores normally.
+8. **Points.** Every time someone scores, a small floating card pops up in
+   the top-right corner showing their profile picture (when TikTok sends
+   one — otherwise a colored initial), their name, the word they guessed,
+   and the points they just earned. It fades out on its own after a few
+   seconds.
+9. **Fullscreen.** Tap the corner-arrows button at the top right to go
    fullscreen, and tap it again (or press Esc) to leave. The game keeps its
    normal width and stays centered, so nothing is stretched. On an iPhone,
    Safari doesn't allow fullscreen for web pages: tap **Share → Add to Home
    Screen** and open the game from your home screen instead.
-7. **Enter a word** at the bottom lets you submit a guess yourself. In Live
-   and Test rounds it shows up as a "HOST" test guess and never scores. In
-   Offline rounds it's how you enter everyone's guesses, so it also asks
-   for the player's name and those guesses do score. Tap the bar to fold it
-   away when you don't need it.
-8. Tap **End round** (twice, so you can't hit it by accident) to stop early
-   and show everyone the answer. When a round ends — someone finds the word
-   or you end it — a floating window shows the answer (ranked #1) and the
-   guessed-words list stays on screen. Both stay until you start the next
-   round. The same button turns into **New round**; one tap starts another
-   round with your current settings.
+10. Tap **End round** (twice, so you can't hit it by accident) to stop
+    early and show everyone the answer. When a round ends, two floating
+    windows appear automatically, one after the other — no tapping needed:
+    - First, a window showing **the answer** in large text, plus a short
+      "🏅 Top scorers this round" list (whoever earned the most points
+      this round).
+    - A few seconds later that window is replaced by a **🏆 All-time top
+      scores** window (top 20 for this streaming session), which then
+      fades away on its own.
+    The **Live guesses** board underneath keeps everything as it was the
+    whole time — the floating windows are just a highlight reel on top.
+    The round button turns into **New round**; one tap starts another
+    round with your current settings.
 
 ---
 
@@ -146,6 +172,8 @@ The bar at the top always tells you what's happening in plain language:
   (e.g. "make sure you're currently LIVE").
 
 Tap the bar to expand it and see:
+- **Dictionary** — how many real English words the game currently knows
+  (see "Growing the dictionary" below).
 - **Raw events received** — a number that goes up every time *any*
   message arrives from TikTok, whether or not it was understood. If this
   number is stuck at 0, chat isn't reaching the app at all (check you're
@@ -172,6 +200,10 @@ Tap the bar to expand it and see:
 - Trivial inflections of the target (like "coffees" for "coffee") are
   filtered out of the ranking so they don't hand out a cheap near-exact
   slot right next to the real answer.
+- **No difficulty setting.** Contexto is open to any word — the secret
+  word's length is randomized every round from 4 to 12 letters (or your
+  chosen Short / Medium / Long range in Live mode), and there are no
+  letter boxes revealing how long it is.
 - **A very large dictionary.** To decide what counts as a real English word,
   the game merges several word lists: the built-in one (about 275,000
   words) plus large public lists that the server downloads once when it
@@ -187,9 +219,6 @@ Tap the bar to expand it and see:
   **Latest** line but not in the sorted list.
 - **One row per word.** If several people guess the same word it appears
   once in Live guesses, next to whoever found it first.
-- **The secret word is never shown up front.** With **Word length** on
-  "Any", its length is randomized every round from 4 to 15 letters, and
-  there are no letter boxes revealing how long it is.
 - Test and Offline rounds use a small built-in word list instead, so they
   work with no internet at all.
 - **Points are small on purpose.** Only the closest ten words score, and
@@ -205,20 +234,25 @@ Tap the bar to expand it and see:
   | 6–10 | 1 |
   | 11 or further, or not a word | 0 |
 
-  Points appear as a small gold **+N** on each guess, and the winner's
-  total is shown in the win banner. Totals are kept for the whole session
-  (they reset if the app restarts). Host test guesses never score. To
-  re-balance the game, edit the `POINTS_BY_RANK` table near the top of the
-  game-logic section of `server.js`.
+  Points appear as a small gold **+N** on each guess row, and also as the
+  floating profile-picture popup described above. Totals are kept for the
+  whole session (they reset if the app restarts). Host test guesses and
+  hinted words never score by themselves. To re-balance the game, edit
+  the `POINTS_BY_RANK` table near the top of the game-logic section of
+  `server.js`.
 - **"Already guessed."** If a word was already guessed earlier in the round,
   the **Latest** line shows an **Already guessed** tag instead of points
   (hover it to see who guessed it first). Repeats never add a new row to
   the list and never score.
+- **Hints never run out and never spoil the answer.** Each tap reveals
+  exactly one more word — always the next-closest one that hasn't been
+  found or hinted yet — so you can hand your chat as many nudges as you
+  like without ever handing them rank #1.
 - **Viewer count** appears next to the connection status once TikTok
   starts sending it — not every stream reports it right away.
 - Nothing is stored in an external database — restarting the app (for
   example, after a Render redeploy) clears scores. Your settings (username,
-  difficulty, etc.) are saved in your phone's browser, not on the server.
+  word length, etc.) are saved in your phone's browser, not on the server.
 - If TikTok changes something and the connection library falls behind,
   the diagnostics drawer described above is exactly what will show you
   what changed, without needing to read any code.
@@ -248,26 +282,30 @@ Nothing else needs to change.
 
 ---
 
-## If the page looks out of date
+## Folder structure (single deploy folder)
 
-The game is made of `server.js` (top level) plus three page files —
-`index.html`, `client.js` and `style.css` — that live in the **`public`**
-folder. If you update only some of them, you can end up with a new server
-running an old-looking page (for example, old panels showing "undefined").
+Everything lives in one folder — this is exactly what you upload to
+GitHub in Step 2:
 
-To check what's running:
+```
+tiktok-contexto-live/
+├── server.js          ← the whole backend (game logic, TikTok connection)
+├── package.json
+├── README.md
+├── public/             ← the entire front-end — nothing outside this folder
+│   ├── index.html
+│   ├── client.js
+│   └── style.css
+└── data/
+    ├── words.json           ← Live-mode word pool
+    ├── fallback-puzzles.json ← Test/Offline word pool + backup for Live
+    └── dictionaries/         ← drop extra .txt word lists here (optional)
+```
 
-1. Tap the status bar at the top of the game — the drawer shows a
-   **Page version** line. The current version is **3**.
-2. In Render, open your service's **Logs**. Right after each start you'll
-   see three lines like `[ui] index.html <- public/index.html (version 3)`.
-   If it says **version 0**, the old page files are still in your GitHub
-   repository — upload the new `index.html`, `client.js` and `style.css`
-   into the `public` folder again.
-
-(If the three page files were accidentally uploaded to the top level next to
-`server.js`, the server notices and uses the newer copies.) After Render
-finishes deploying, reload the page once.
+There is no longer a "which copy is newer" system to think about — the
+front-end is only ever served from `public/`, so uploading a changed file
+there is always enough. After Render finishes deploying, reload the page
+once.
 
 ---
 
@@ -275,5 +313,5 @@ finishes deploying, reload the page once.
 
 Because Test Mode never touches TikTok, you (or anyone helping you) can
 always verify the game logic still works after any future change simply
-by opening the app and tapping **🧪 Test mode** — no need to go live to
-check.
+by opening the app, tapping **⚙️ Settings**, switching to **Test**, and
+tapping **Start round** — no need to go live to check.

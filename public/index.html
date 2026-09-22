@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-<!-- UI_VERSION: 3 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
@@ -33,7 +32,6 @@
       </button>
     </div>
     <div id="diagPanel" class="diag-panel hidden">
-      <div class="diag-row"><span>Page version</span><strong>3</strong></div>
       <div class="diag-row"><span>Dictionary</span><strong id="diagDict">—</strong></div>
       <div class="diag-row"><span>Connection</span><strong id="diagStatus">idle</strong></div>
       <div class="diag-row"><span>Raw events received</span><strong id="diagCount">0</strong></div>
@@ -44,6 +42,115 @@
       </details>
     </div>
   </header>
+
+  <!-- ===== ACTION BAR: every control lives up here, nothing pinned to the bottom ===== -->
+  <div id="actionBar" class="action-bar">
+    <button id="settingsToggle" class="pill-btn" type="button" aria-expanded="true" aria-controls="settingsBody">
+      <span class="pill-icon">⚙️</span> Settings
+      <span id="settingsSummary" class="settings-summary"></span>
+      <span class="caret" aria-hidden="true">▾</span>
+    </button>
+    <button id="hintBtn" class="pill-btn" type="button" disabled title="Reveal the next-best word (never the answer)">
+      <span class="pill-icon">💡</span> Hint
+    </button>
+    <button id="dockToggle" class="pill-btn" type="button" aria-expanded="true" aria-controls="dockBody">
+      <span class="pill-icon">⌨️</span> Enter a word
+      <span class="caret" aria-hidden="true">▾</span>
+    </button>
+    <button id="roundBtn" class="btn btn-primary" type="button">Start round</button>
+  </div>
+
+  <!-- ===== SETTINGS PANEL (collapsible, opened from the action bar) ===== -->
+  <section id="settings" class="settings" data-mode="live">
+    <div id="settingsBody" class="collapse" data-open="true">
+      <div class="collapse-inner">
+
+        <div class="seg" role="tablist" aria-label="Game mode">
+          <button id="tab-live" class="seg-btn" type="button" role="tab" data-mode="live" aria-selected="true" aria-controls="pane-live">Live</button>
+          <button id="tab-test" class="seg-btn" type="button" role="tab" data-mode="test" aria-selected="false" aria-controls="pane-test" tabindex="-1">Test</button>
+          <button id="tab-offline" class="seg-btn" type="button" role="tab" data-mode="offline" aria-selected="false" aria-controls="pane-offline" tabindex="-1">Offline</button>
+        </div>
+        <p id="modeHint" class="mode-hint"></p>
+
+        <!-- Live -->
+        <div id="pane-live" class="mode-pane" data-pane="live" role="tabpanel" aria-labelledby="tab-live">
+          <div class="fields">
+            <div class="field wide">
+              <label class="label" for="tiktokUsername">TikTok username</label>
+              <div class="inline">
+                <input id="tiktokUsername" class="input" type="text" placeholder="username (without @)" autocomplete="off" autocapitalize="none" spellcheck="false" />
+                <button id="connectBtn" class="btn btn-outline" type="button">Connect</button>
+              </div>
+              <p id="connNote" class="field-note"></p>
+            </div>
+            <div class="field wide">
+              <label class="label" for="lengthSelect">Word length</label>
+              <select id="lengthSelect" class="select">
+                <option value="any">Any (4–12 letters)</option>
+                <option value="short">Short (4–6 letters)</option>
+                <option value="medium">Medium (7–9 letters)</option>
+                <option value="long">Long (10–12 letters)</option>
+              </select>
+            </div>
+            <div class="field wide">
+              <label class="label" for="liveWord">Secret word (optional)</label>
+              <input id="liveWord" class="input" type="text" placeholder="Leave empty for a random word" autocomplete="off" autocapitalize="none" spellcheck="false" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Test -->
+        <div id="pane-test" class="mode-pane hidden" data-pane="test" role="tabpanel" aria-labelledby="tab-test">
+          <div class="fields">
+            <div class="field wide">
+              <label class="label" for="testWord">Secret word</label>
+              <select id="testWord" class="select"><option value="">Random</option></select>
+            </div>
+            <div class="field">
+              <span class="label">Simulated chat</span>
+              <label class="switch">
+                <input id="autoplayToggle" type="checkbox" checked />
+                <span class="track" aria-hidden="true"></span>
+                <span id="autoplayText">On</span>
+              </label>
+            </div>
+            <div class="field">
+              <label class="label" for="speedSelect">Speed</label>
+              <select id="speedSelect" class="select">
+                <option value="slow">Slow</option>
+                <option value="normal">Normal</option>
+                <option value="fast">Fast</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Offline -->
+        <div id="pane-offline" class="mode-pane hidden" data-pane="offline" role="tabpanel" aria-labelledby="tab-offline">
+          <div class="fields">
+            <div class="field wide">
+              <label class="label" for="offlineWord">Secret word</label>
+              <select id="offlineWord" class="select"><option value="">Random</option></select>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== HOST WORD ENTRY (collapsible, opened from the action bar) ===== -->
+  <nav id="hostDock" class="host-dock" aria-label="Host word entry">
+    <div id="dockBody" class="collapse" data-open="true">
+      <div class="collapse-inner">
+        <div class="dock-form">
+          <input id="playerName" class="input input-name hidden" type="text" placeholder="Player" maxlength="24" autocomplete="off" aria-label="Player name" />
+          <input id="hostInput" class="input" type="text" placeholder="Start a round to guess" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="send" disabled />
+          <button id="hostGuessBtn" class="btn btn-outline" type="button" disabled>Guess</button>
+        </div>
+      </div>
+    </div>
+  </nav>
 
   <!-- ===== MAIN GAME AREA ===== -->
   <main id="game">
@@ -56,102 +163,6 @@
         <span class="dot-sep">·</span>
         <span id="statPlayers">0 players</span>
         <span id="statDiff" class="diff-chip hidden"></span>
-      </div>
-    </section>
-
-    <!-- ===== SETTINGS (collapsible) ===== -->
-    <section id="settings" class="settings" data-mode="live">
-      <div class="settings-head">
-        <button id="settingsToggle" class="settings-toggle" type="button" aria-expanded="true" aria-controls="settingsBody">
-          <span class="settings-title">Settings</span>
-          <span id="settingsSummary" class="settings-summary"></span>
-          <span class="caret" aria-hidden="true">▾</span>
-        </button>
-        <button id="roundBtn" class="btn btn-primary" type="button">Start round</button>
-      </div>
-
-      <div id="settingsBody" class="collapse" data-open="true">
-        <div class="collapse-inner">
-
-          <div class="seg" role="tablist" aria-label="Game mode">
-            <button id="tab-live" class="seg-btn" type="button" role="tab" data-mode="live" aria-selected="true" aria-controls="pane-live">Live</button>
-            <button id="tab-test" class="seg-btn" type="button" role="tab" data-mode="test" aria-selected="false" aria-controls="pane-test" tabindex="-1">Test</button>
-            <button id="tab-offline" class="seg-btn" type="button" role="tab" data-mode="offline" aria-selected="false" aria-controls="pane-offline" tabindex="-1">Offline</button>
-          </div>
-          <p id="modeHint" class="mode-hint"></p>
-
-          <!-- Live -->
-          <div id="pane-live" class="mode-pane" data-pane="live" role="tabpanel" aria-labelledby="tab-live">
-            <div class="fields">
-              <div class="field wide">
-                <label class="label" for="tiktokUsername">TikTok username</label>
-                <div class="inline">
-                  <input id="tiktokUsername" class="input" type="text" placeholder="username (without @)" autocomplete="off" autocapitalize="none" spellcheck="false" />
-                  <button id="connectBtn" class="btn btn-outline" type="button">Connect</button>
-                </div>
-                <p id="connNote" class="field-note"></p>
-              </div>
-              <div class="field">
-                <label class="label" for="difficultySelect">Difficulty</label>
-                <select id="difficultySelect" class="select">
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
-                </select>
-              </div>
-              <div class="field">
-                <label class="label" for="lengthSelect">Word length</label>
-                <select id="lengthSelect" class="select">
-                  <option value="any">Any (4–15)</option>
-                  <option value="short">Short (4–6)</option>
-                  <option value="medium">Medium (7–9)</option>
-                  <option value="long">Long (10–15)</option>
-                </select>
-              </div>
-              <div class="field wide">
-                <label class="label" for="liveWord">Secret word (optional)</label>
-                <input id="liveWord" class="input" type="text" placeholder="Leave empty for a random word" autocomplete="off" autocapitalize="none" spellcheck="false" />
-              </div>
-            </div>
-          </div>
-
-          <!-- Test -->
-          <div id="pane-test" class="mode-pane hidden" data-pane="test" role="tabpanel" aria-labelledby="tab-test">
-            <div class="fields">
-              <div class="field wide">
-                <label class="label" for="testWord">Secret word</label>
-                <select id="testWord" class="select"><option value="">Random</option></select>
-              </div>
-              <div class="field">
-                <span class="label">Simulated chat</span>
-                <label class="switch">
-                  <input id="autoplayToggle" type="checkbox" checked />
-                  <span class="track" aria-hidden="true"></span>
-                  <span id="autoplayText">On</span>
-                </label>
-              </div>
-              <div class="field">
-                <label class="label" for="speedSelect">Speed</label>
-                <select id="speedSelect" class="select">
-                  <option value="slow">Slow</option>
-                  <option value="normal">Normal</option>
-                  <option value="fast">Fast</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <!-- Offline -->
-          <div id="pane-offline" class="mode-pane hidden" data-pane="offline" role="tabpanel" aria-labelledby="tab-offline">
-            <div class="fields">
-              <div class="field wide">
-                <label class="label" for="offlineWord">Secret word</label>
-                <select id="offlineWord" class="select"><option value="">Random</option></select>
-              </div>
-            </div>
-          </div>
-
-        </div>
       </div>
     </section>
 
@@ -172,7 +183,7 @@
       <div id="latestRow" class="guess-row is-empty">Waiting for the first guess…</div>
     </section>
 
-    <!-- ===== LIVE GUESSES (auto-sorted by rank) ===== -->
+    <!-- ===== LIVE GUESSES (auto-sorted by rank, always top-down) ===== -->
     <section class="board">
       <div class="board-head">
         <h2>Live guesses</h2>
@@ -184,23 +195,30 @@
 
   </main>
 
-  <!-- ===== BOTTOM: host word entry (collapsible) ===== -->
-  <nav id="hostDock" class="host-dock" aria-label="Host word entry">
-    <button id="dockToggle" class="dock-toggle" type="button" aria-expanded="true" aria-controls="dockBody">
-      <span>Enter a word</span>
-      <span class="caret" aria-hidden="true">▾</span>
-    </button>
-    <div id="dockBody" class="collapse" data-open="true">
-      <div class="collapse-inner">
-        <div class="dock-form">
-          <input id="playerName" class="input input-name hidden" type="text" placeholder="Player" maxlength="24" autocomplete="off" aria-label="Player name" />
-          <input id="hostInput" class="input" type="text" placeholder="Start a round to guess" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="send" disabled />
-          <button id="hostGuessBtn" class="btn btn-outline" type="button" disabled>Guess</button>
-        </div>
-      </div>
-    </div>
-  </nav>
+</div>
 
+<!-- Floating "+N points" popups, one per scoring guess -->
+<div id="pointsPopupHost" aria-live="polite"></div>
+
+<!-- Round-end floating window: the answer, then this round's top scorers -->
+<div id="roundEndOverlay" class="overlay hidden">
+  <div class="overlay-card">
+    <div class="overlay-label">The answer was</div>
+    <div id="overlayAnswerWord" class="overlay-answer"></div>
+    <div id="overlayRoundMeta" class="overlay-sub"></div>
+    <div id="overlayScorersWrap" class="overlay-scorers-wrap hidden">
+      <div class="overlay-label small">🏅 Top scorers this round</div>
+      <ol id="overlayScorers" class="lb-list"></ol>
+    </div>
+  </div>
+</div>
+
+<!-- Floating window: all-time top 20, shown right after the round-end window -->
+<div id="leaderboardOverlay" class="overlay hidden">
+  <div class="overlay-card">
+    <div class="overlay-label">🏆 All-time top scores</div>
+    <ol id="overlayLeaderboardList" class="lb-list"></ol>
+  </div>
 </div>
 
 <div id="toastHost"></div>

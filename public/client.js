@@ -1,4 +1,3 @@
-// UI_VERSION: 3
 (function () {
   'use strict';
 
@@ -79,19 +78,23 @@
   const giveUpBanner = el('giveUpBanner');
   const giveUpWord = el('giveUpWord');
 
-  // Settings
-  const settingsEl = el('settings');
+  // Action bar
   const settingsToggle = el('settingsToggle');
   const settingsBody = el('settingsBody');
   const settingsSummary = el('settingsSummary');
+  const hintBtn = el('hintBtn');
+  const dockToggle = el('dockToggle');
+  const dockBody = el('dockBody');
   const roundBtn = el('roundBtn');
+
+  // Settings
+  const settingsEl = el('settings');
   const modeHint = el('modeHint');
   const segBtns = $$('.seg-btn');
   const panes = $$('.mode-pane');
   const tiktokUsername = el('tiktokUsername');
   const connectBtn = el('connectBtn');
   const connNote = el('connNote');
-  const difficultySelect = el('difficultySelect');
   const lengthSelect = el('lengthSelect');
   const liveWord = el('liveWord');
   const testWord = el('testWord');
@@ -107,11 +110,19 @@
   const guessCount = el('guessCount');
 
   // Host word entry
-  const dockToggle = el('dockToggle');
-  const dockBody = el('dockBody');
   const playerName = el('playerName');
   const hostInput = el('hostInput');
   const hostGuessBtn = el('hostGuessBtn');
+
+  // Points popups + overlays
+  const pointsPopupHost = el('pointsPopupHost');
+  const roundEndOverlay = el('roundEndOverlay');
+  const overlayAnswerWord = el('overlayAnswerWord');
+  const overlayRoundMeta = el('overlayRoundMeta');
+  const overlayScorersWrap = el('overlayScorersWrap');
+  const overlayScorers = el('overlayScorers');
+  const leaderboardOverlay = el('leaderboardOverlay');
+  const overlayLeaderboardList = el('overlayLeaderboardList');
 
   // ============================================================
   // Small helpers
@@ -123,6 +134,33 @@
   }
   function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
   function plural(n, one, many) { return `${n} ${n === 1 ? one : many}`; }
+
+  // A stable, pleasant color for a username, used for its fallback avatar.
+  const AVATAR_COLORS = ['#fe2c55', '#25f4ee', '#ffc24b', '#4ade80', '#a78bfa', '#fb923c', '#38bdf8', '#f472b6'];
+  function colorFor(name) {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return AVATAR_COLORS[h % AVATAR_COLORS.length];
+  }
+  function fallbackAvatarHtml(user) {
+    return `<span class="pp-avatar" style="background:${colorFor(user || '?')}">${escapeHtml((user || '?').charAt(0).toUpperCase())}</span>`;
+  }
+  function avatarHtml(user, avatarUrl) {
+    if (!avatarUrl) return fallbackAvatarHtml(user);
+    // If the image fails to load (private/expired CDN URL), swap in the
+    // colored-initial fallback instead of leaving a broken image icon.
+    return `<img class="pp-avatar" src="${escapeHtml(avatarUrl)}" alt="" referrerpolicy="no-referrer" data-fallback-user="${escapeHtml(user || '?')}" />`;
+  }
+  pointsPopupHost.addEventListener('error', (e) => {
+    const img = e.target;
+    if (!img || img.tagName !== 'IMG' || !img.classList.contains('pp-avatar')) return;
+    const span = document.createElement('span');
+    span.className = 'pp-avatar';
+    const user = img.dataset.fallbackUser || '?';
+    span.style.background = colorFor(user);
+    span.textContent = user.charAt(0).toUpperCase();
+    img.replaceWith(span);
+  }, true);
 
   function toast(text) {
     const host = el('toastHost');
@@ -143,8 +181,18 @@
   }
   function isOpen(root) { return root.dataset.open === 'true'; }
 
-  settingsToggle.addEventListener('click', () => setOpen(settingsBody, settingsToggle, !isOpen(settingsBody)));
-  dockToggle.addEventListener('click', () => setOpen(dockBody, dockToggle, !isOpen(dockBody)));
+  // Opening one of the two panels folds the other away, so the action
+  // bar never has two long panels open (and fighting for space) at once.
+  settingsToggle.addEventListener('click', () => {
+    const opening = !isOpen(settingsBody);
+    setOpen(settingsBody, settingsToggle, opening);
+    if (opening) setOpen(dockBody, dockToggle, false);
+  });
+  dockToggle.addEventListener('click', () => {
+    const opening = !isOpen(dockBody);
+    setOpen(dockBody, dockToggle, opening);
+    if (opening) setOpen(settingsBody, settingsToggle, false);
+  });
   diagBtn.addEventListener('click', () => {
     const nowHidden = diagPanel.classList.toggle('hidden');
     diagBtn.setAttribute('aria-expanded', String(!nowHidden));
@@ -194,9 +242,9 @@
     test:    { label: 'Test',    hint: 'Rehearse with simulated viewers. No TikTok needed.' },
     offline: { label: 'Offline', hint: 'No TikTok, no internet. You type each guess yourself.' },
   };
-  const STORE_KEY = 'contextoLive.settings.v2';
+  const STORE_KEY = 'contextoLive.settings.v3';
   const DEFAULTS = {
-    mode: 'live', username: '', difficulty: 'medium', length: 'any',
+    mode: 'live', username: '', length: 'any',
     autoplay: true, speed: 'normal', playerName: '',
   };
   function loadSettings() {
@@ -213,7 +261,6 @@
     if (select.value !== value) select.selectedIndex = 0;
   }
   tiktokUsername.value = settings.username;
-  setSelect(difficultySelect, settings.difficulty);
   setSelect(lengthSelect, settings.length);
   setSelect(speedSelect, settings.speed);
   autoplayToggle.checked = !!settings.autoplay;
@@ -265,7 +312,7 @@
     } else {
       parts.push('Manual guesses');
     }
-    settingsSummary.innerHTML = parts.map((p) => `<span>${escapeHtml(p)}</span>`).join('');
+    settingsSummary.innerHTML = parts.map((p) => `<span>${escapeHtml(p)}</span>`).join(' · ');
   }
 
   tiktokUsername.addEventListener('input', () => {
@@ -273,7 +320,6 @@
     saveSettings();
   });
   tiktokUsername.addEventListener('keydown', (e) => { if (e.key === 'Enter') connectBtn.click(); });
-  difficultySelect.addEventListener('change', () => { settings.difficulty = difficultySelect.value; saveSettings(); updateSummary(); });
   lengthSelect.addEventListener('change', () => { settings.length = lengthSelect.value; saveSettings(); });
 
   function syncAutoplayUi() {
@@ -320,6 +366,22 @@
   }
 
   // ============================================================
+  // Hint button
+  // ============================================================
+  function updateHintButton() {
+    const active = isActive();
+    const remaining = lastState && lastState.game ? (lastState.game.hintsAvailable || 0) : 0;
+    hintBtn.disabled = !active || remaining <= 0;
+    hintBtn.title = !active
+      ? 'Start a round to use hints'
+      : (remaining > 0 ? `Reveal the next-best word (${remaining} left to reveal)` : 'Every ranked word has already been found');
+  }
+  hintBtn.addEventListener('click', () => {
+    if (hintBtn.disabled) return;
+    send({ type: 'request_hint' });
+  });
+
+  // ============================================================
   // Start / end round (one button, always visible)
   // ============================================================
   function updateRoundButton() {
@@ -345,7 +407,7 @@
       if (conn.status !== 'connected') {
         toast('Not connected to TikTok yet — chat guesses will only arrive once you connect.');
       }
-      send({ type: 'start_game', mode, difficulty: settings.difficulty, length: settings.length, word: liveWord.value.trim() });
+      send({ type: 'start_game', mode, length: settings.length, word: liveWord.value.trim() });
       liveWord.value = ''; // never leave the secret word sitting on screen
     } else if (mode === 'test') {
       send({ type: 'start_game', mode, word: testWord.value, autoplay: settings.autoplay, speed: settings.speed });
@@ -435,7 +497,11 @@
   function isAlreadyGuessed(entry) { return !!entry.isRepeat && entry.rank != null; }
 
   function rowClass(entry) {
-    return 'guess-row' + (entry.isWin ? ' win' : '') + (entry.isHost ? ' host' : '') + (isAlreadyGuessed(entry) ? ' repeat' : '');
+    return 'guess-row' +
+      (entry.isWin ? ' win' : '') +
+      (entry.isHost ? ' host' : '') +
+      (entry.isHint ? ' hint' : '') +
+      (isAlreadyGuessed(entry) ? ' repeat' : '');
   }
   function rowHtml(entry) {
     let note = '';
@@ -443,10 +509,13 @@
       note = `<span class="guess-note" title="First guessed by ${escapeHtml(entry.repeatOf)}">Already guessed</span>`;
     } else if (entry.points > 0) {
       note = `<span class="guess-pts" title="Points earned">+${entry.points}</span>`;
+    } else if (entry.isHint) {
+      note = `<span class="guess-note" title="Revealed with a hint">Hint</span>`;
     }
+    const displayUser = entry.isHint ? '💡 Hint' : entry.user;
     return `
       <div class="guess-heat" style="width:${heatWidth(entry.rank)};background:${tierColor(entry.rank)}"></div>
-      <span class="guess-user">${escapeHtml(entry.user)}</span>
+      <span class="guess-user">${escapeHtml(displayUser)}</span>
       <span class="guess-word">${escapeHtml(entry.word)}</span>
       ${note}
       <span class="guess-rank ${tierClass(entry.rank)}">${rankLabel(entry.rank)}</span>
@@ -481,10 +550,10 @@
   function upsertBoard(entry) {
     if (entry.rank == null) return; // non-words only show in the "Latest" line
     const existing = board.get(entry.word);
-    if (!existing || (existing.isHost && !entry.isHost)) board.set(entry.word, entry);
+    if (!existing || ((existing.isHost || existing.isHint) && !entry.isHost)) board.set(entry.word, entry);
   }
 
-  function entrySig(e) { return [e.user, e.rank, e.points, e.isHost, e.isWin].join('|'); }
+  function entrySig(e) { return [e.user, e.rank, e.points, e.isHost, e.isHint, e.isWin].join('|'); }
 
   function scheduleBoardRender() {
     if (renderQueued) return;
@@ -492,6 +561,8 @@
     requestAnimationFrame(() => { renderQueued = false; renderBoard(); });
   }
 
+  // Always re-sorts closest-first, top to bottom, every time it runs —
+  // this is what keeps the board continuously ranked as guesses arrive.
   function renderBoard() {
     const entries = Array.from(board.values()).sort((a, b) => a.rank - b.rank).slice(0, MAX_ROWS);
     const keep = new Set(entries.map((e) => e.word));
@@ -514,7 +585,7 @@
         row.addEventListener('animationend', () => row.classList.remove('is-new'), { once: true });
         rowEls.set(entry.word, row);
       } else if (row._sig !== entrySig(entry)) {
-        // Same word, different finder (e.g. a viewer replaced a host test entry).
+        // Same word, different finder (e.g. a viewer replaced a host/hint entry).
         row.className = rowClass(entry);
         row.innerHTML = rowHtml(entry);
       }
@@ -547,13 +618,10 @@
   }
 
   function setDiffChip(state) {
-    const g = state.game;
-    if (!(g.active || g.result) || !state.mode) { statDiff.classList.add('hidden'); return; }
-    let text, cls;
-    if (state.mode === 'live') { text = g.difficulty || 'live'; cls = 'diff-' + (g.difficulty || 'medium'); }
-    else { text = MODE_META[state.mode].label; cls = 'diff-' + state.mode; }
-    statDiff.textContent = text;
-    statDiff.className = 'diff-chip ' + cls;
+    if (!(state.game.active || state.game.result) || !state.mode) { statDiff.classList.add('hidden'); return; }
+    statDiff.textContent = MODE_META[state.mode].label;
+    statDiff.className = 'diff-chip diff-' + state.mode;
+    statDiff.classList.remove('hidden');
   }
 
   function updateHero() {
@@ -602,6 +670,72 @@
   }
 
   // ============================================================
+  // Floating "+N points" popup — audience avatar, name, word, points.
+  // ============================================================
+  function showPointsPopup(entry) {
+    if (!entry || entry.isHost || entry.isHint || !(entry.points > 0)) return;
+    const card = document.createElement('div');
+    card.className = 'points-popup';
+    card.innerHTML = `
+      ${avatarHtml(entry.user, entry.avatar)}
+      <div class="pp-text">
+        <div class="pp-name">${escapeHtml(entry.user)}</div>
+        <div class="pp-word">guessed “${escapeHtml(entry.word)}”</div>
+      </div>
+      <div class="pp-pts">+${entry.points}</div>
+    `;
+    pointsPopupHost.appendChild(card);
+    setTimeout(() => card.remove(), 3000);
+  }
+
+  // ============================================================
+  // Round-end floating sequence: answer + this round's top scorers,
+  // then (auto-advancing, no tap needed) the all-time leaderboard.
+  // ============================================================
+  let overlayTimer1 = null;
+  let overlayTimer2 = null;
+
+  function renderLbList(container, rows, emptyText) {
+    if (!rows || !rows.length) {
+      container.innerHTML = `<li class="lb-empty">${escapeHtml(emptyText)}</li>`;
+      return;
+    }
+    container.innerHTML = rows.map((r, i) => `
+      <li class="lb-row">
+        <span class="lb-rank">${i + 1}</span>
+        <span class="lb-name">${escapeHtml(r.user)}</span>
+        <span class="lb-score">${r.points != null ? '+' + r.points : r.score}</span>
+      </li>
+    `).join('');
+  }
+
+  function runRoundEndSequence(result) {
+    if (!result) return;
+    clearTimeout(overlayTimer1);
+    clearTimeout(overlayTimer2);
+    roundEndOverlay.classList.add('hidden');
+    leaderboardOverlay.classList.add('hidden');
+
+    overlayAnswerWord.textContent = (result.word || '').toUpperCase();
+    overlayRoundMeta.textContent = result.gaveUp
+      ? `Round ended after ${plural(result.guesses, 'guess', 'guesses')}.`
+      : `Found by ${result.winner} in ${plural(result.guesses, 'guess', 'guesses')}.`;
+
+    const scorers = result.topScorers || [];
+    overlayScorersWrap.classList.toggle('hidden', scorers.length === 0);
+    if (scorers.length) renderLbList(overlayScorers, scorers, '');
+
+    roundEndOverlay.classList.remove('hidden');
+    overlayTimer1 = setTimeout(() => {
+      roundEndOverlay.classList.add('hidden');
+      const top = result.leaderboardTop || (lastState && lastState.leaderboardTop) || [];
+      renderLbList(overlayLeaderboardList, top, 'No scores yet this session.');
+      leaderboardOverlay.classList.remove('hidden');
+      overlayTimer2 = setTimeout(() => leaderboardOverlay.classList.add('hidden'), 5000);
+    }, 4200);
+  }
+
+  // ============================================================
   // Server -> client message handling
   // ============================================================
   function handleServerMessage(msg) {
@@ -609,14 +743,17 @@
       case 'state': renderState(msg.state); break;
       case 'raw_event': renderDiagnostics(msg); break;
       case 'guess': onGuess(msg); break;
+      case 'hint': onHint(msg); break;
       case 'game_started': onGameStarted(); break;
       case 'win':
         showResult({ word: msg.word, winner: msg.user, gaveUp: false, guesses: msg.guessesUsed, points: msg.points, total: msg.total });
         launchConfetti();
+        runRoundEndSequence(msg.result);
         break;
       case 'give_up':
         showResult({ word: msg.word, gaveUp: true });
         if (msg.entry) { upsertBoard(msg.entry); scheduleBoardRender(); }
+        runRoundEndSequence(msg.result);
         break;
       case 'server_error':
         starting = false;
@@ -631,6 +768,13 @@
     renderLatest(msg.entry);
     setStats(msg.totalGuesses, msg.players);
     scheduleBoardRender();
+    showPointsPopup(msg.entry);
+  }
+
+  function onHint(msg) {
+    upsertBoard(msg.entry);
+    renderLatest(msg.entry);
+    scheduleBoardRender();
   }
 
   function onGameStarted() {
@@ -641,8 +785,11 @@
     showResult(null);
     setStats(0, 0);
     statsRow.classList.remove('hidden');
-    setOpen(settingsBody, settingsToggle, false); // get settings out of the way once live
+    // Fold both panels away once the round is live, so the board gets the space.
+    setOpen(settingsBody, settingsToggle, false);
+    setOpen(dockBody, dockToggle, false);
     updateRoundButton();
+    updateHintButton();
   }
 
   function renderState(state) {
@@ -656,6 +803,7 @@
     if (state.mode) {
       modeBadge.textContent = MODE_META[state.mode].label;
       modeBadge.className = 'mode-badge mode-' + state.mode;
+      modeBadge.classList.remove('hidden');
     } else {
       modeBadge.classList.add('hidden');
     }
@@ -710,6 +858,7 @@
 
     updateSummary();
     updateRoundButton();
+    updateHintButton();
     updateDock();
     updateHero();
   }
@@ -727,6 +876,7 @@
   // ============================================================
   selectMode(settings.mode);
   updateRoundButton();
+  updateHintButton();
   setOpen(settingsBody, settingsToggle, true);
-  setOpen(dockBody, dockToggle, true);
+  setOpen(dockBody, dockToggle, false);
 })();

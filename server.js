@@ -156,31 +156,15 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// The three front-end files belong in the "public" folder. If a newer copy
-// was uploaded to the top level by mistake, use that one instead of quietly
-// serving an old copy from public/. Each file carries a UI_VERSION number;
-// the higher number wins, and public/ wins a tie. The startup log shows
-// exactly which copy is being served.
-const UI_FILES = ['index.html', 'client.js', 'style.css'];
-function uiVersion(file) {
-  try {
-    const m = fs.readFileSync(file, 'utf8').match(/UI_VERSION\s*[:=]\s*(\d+)/);
-    return m ? Number(m[1]) : 0;
-  } catch { return -1; } // file doesn't exist
-}
-const uiSource = {};
-for (const name of UI_FILES) {
-  const inPublic = path.join(__dirname, 'public', name);
-  const inRoot = path.join(__dirname, name);
-  uiSource[name] = uiVersion(inRoot) > uiVersion(inPublic) ? inRoot : inPublic;
-  console.log(`[ui] ${name} <- ${path.relative(__dirname, uiSource[name])} (version ${uiVersion(uiSource[name])})`);
-}
-app.get(['/', '/index.html', '/client.js', '/style.css'], (req, res) => {
-  const name = req.path === '/' ? 'index.html' : req.path.slice(1);
-  res.set('Cache-Control', 'no-cache'); // always fetch the latest page after a deploy
-  res.sendFile(uiSource[name]);
+// The front-end lives entirely in public/ — one folder, one source of
+// truth. Pages are served with no-cache so a redeploy is always picked
+// up immediately.
+app.use((req, res, next) => {
+  if (/\.(html|js|css)$/.test(req.path) || req.path === '/') res.set('Cache-Control', 'no-cache');
+  next();
 });
 app.use(express.static(path.join(__dirname, 'public')));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.use(express.json());
 
 const clients = new Set();
@@ -227,26 +211,35 @@ const state = {
   },
   game: {
     active: false,
-    difficulty: null,
     targetWord: null,
     board: new Map(),           // word -> best entry (one row per distinct ranked word)
     allGuessedWords: new Map(), // word -> { user } first player to find it (points + repeat tags)
     totalGuesses: 0,
     latest: null,               // the most recent guess, shown in the "Latest" line
     winner: null,
-    result: null,               // { word, winner, gaveUp, guesses, players, points, total } once the round ends
+    result: null,               // { word, winner, gaveUp, guesses, players, points, total, topScorers } once the round ends
     startedAt: null,
     uniquePlayers: new Set(),
     extendedRankMap: new Map(), // word -> rank, for valid English words outside the core semantic list
     nextExtendedRank: null,     // next rank to hand out to such a word
+    roundScores: new Map(),     // user -> points earned so far THIS round
+    hintedWords: new Set(),     // words already revealed via a hint this round
   },
-  leaderboard: {}, // username -> { score, wins, guesses } — session totals, kept on the server
+  leaderboard: {}, // username -> { score, wins, guesses } — all-time session totals, kept on the server
 };
 
 const MODES = ['live', 'test', 'offline'];
 let rankMap = new Map();
 let orderedWords = [];
 let testAutoplayTimer = null;
+
+// Top N all-time leaderboard entries, highest score first.
+function topLeaderboard(n = 20) {
+  return Object.entries(state.leaderboard)
+    .map(([user, d]) => ({ user, score: d.score, wins: d.wins }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, n);
+}
 
 function getPublicState() {
   return {
@@ -257,15 +250,16 @@ function getPublicState() {
     diagnostics: state.diagnostics,
     dictionary,
     wordChoices: WORD_CHOICES,
+    leaderboardTop: topLeaderboard(20),
     game: {
       active: state.game.active,
-      difficulty: state.game.difficulty,
       winner: state.game.winner,
       result: state.game.result,
       uniquePlayers: state.game.uniquePlayers.size,
       totalGuesses: state.game.totalGuesses,
       latest: state.game.latest,
       board: boardEntries(150),
+      hintsAvailable: hintsRemaining(),
     },
   };
 }
@@ -283,6 +277,9 @@ function pushState() { broadcast({ type: 'state', state: getPublicState() }); }
 // ============================================================
 const WORD_BANK = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'words.json'), 'utf8'));
 const FALLBACK_PUZZLES = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'fallback-puzzles.json'), 'utf8'));
+// Every word from every old difficulty tier, merged into one pool — Contexto
+// picks from the whole pool, not a difficulty tier.
+const ALL_LIVE_WORDS = Array.from(new Set([...(WORD_BANK.easy || []), ...(WORD_BANK.medium || []), ...(WORD_BANK.hard || [])]));
 // Words the host can pick from in Test and Offline mode (built-in, no internet needed).
 const WORD_CHOICES = Object.keys(FALLBACK_PUZZLES).sort();
 
@@ -291,30 +288,24 @@ function normalize(w) {
 }
 function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
-// The secret word's length is randomized every round (4-15 letters) so
+// The secret word's length is randomized every round (4-12 letters) so
 // it's never confined to one length, and is never revealed up front —
 // the UI has nothing that hints at how many letters it is.
-const TARGET_LENGTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+const TARGET_LENGTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12];
 
-// Host-selectable length ranges (Live mode). "any" keeps the original 4-15 spread.
-const LENGTH_RANGES = { any: [4, 15], short: [4, 6], medium: [7, 9], long: [10, 15] };
+// Host-selectable length ranges (Live mode). "any" keeps the full 4-12 spread.
+const LENGTH_RANGES = { any: [4, 12], short: [4, 6], medium: [7, 9], long: [10, 12] };
 
-function pickWordByRandomLength(difficulty, lengthKey) {
+function pickWordByRandomLength(lengthKey) {
   const [lo, hi] = LENGTH_RANGES[lengthKey] || LENGTH_RANGES.any;
-  const targetLen = pickRandom(TARGET_LENGTHS.filter((l) => l >= lo && l <= hi));
-  const pool = WORD_BANK[difficulty] || WORD_BANK.medium;
-  const allWords = [...WORD_BANK.easy, ...WORD_BANK.medium, ...WORD_BANK.hard];
-  let candidates = pool.filter((w) => normalize(w).length === targetLen);
+  const validLens = TARGET_LENGTHS.filter((l) => l >= lo && l <= hi);
+  const targetLen = pickRandom(validLens.length ? validLens : TARGET_LENGTHS);
+  let candidates = ALL_LIVE_WORDS.filter((w) => normalize(w).length === targetLen);
   if (!candidates.length) {
-    // That difficulty tier doesn't have a word of this length — widen
-    // the search across every difficulty rather than skip the length.
-    candidates = allWords.filter((w) => normalize(w).length === targetLen);
+    // Nothing of this exact length: any word inside the chosen length range.
+    candidates = ALL_LIVE_WORDS.filter((w) => { const l = normalize(w).length; return l >= lo && l <= hi; });
   }
-  if (!candidates.length) {
-    // Still nothing: any word inside the chosen length range.
-    candidates = allWords.filter((w) => { const l = normalize(w).length; return l >= lo && l <= hi; });
-  }
-  if (!candidates.length) candidates = pool; // last resort
+  if (!candidates.length) candidates = ALL_LIVE_WORDS; // last resort
   return pickRandom(candidates);
 }
 
@@ -324,7 +315,7 @@ function pickFallbackWordByRandomLength() {
   let candidates = keys.filter((k) => normalize(k).length === targetLen);
   if (!candidates.length) candidates = keys.filter((k) => {
     const l = normalize(k).length;
-    return l >= 4 && l <= 15;
+    return l >= 4 && l <= 12;
   });
   if (!candidates.length) candidates = keys;
   return pickRandom(candidates);
@@ -400,13 +391,12 @@ function buildPuzzleFromFallback(word) {
 // ============================================================
 async function startGame(mode, opts = {}) {
   try {
-    const difficulty = ['easy', 'medium', 'hard'].includes(opts.difficulty) ? opts.difficulty : 'medium';
     const custom = normalize(opts.word || '');
     let puzzle;
 
     if (mode === 'live') {
       if (opts.word && custom.length < 3) throw new Error('The secret word needs at least 3 letters.');
-      const word = custom || pickWordByRandomLength(difficulty, opts.length);
+      const word = custom || pickWordByRandomLength(opts.length);
       try {
         puzzle = await buildPuzzleFromDatamuse(word);
       } catch (err) {
@@ -434,7 +424,6 @@ async function startGame(mode, opts = {}) {
     const g = state.game;
     state.mode = mode;
     g.active = true;
-    g.difficulty = mode === 'live' ? difficulty : null;
     g.targetWord = puzzle.target;
     g.board = new Map();
     g.allGuessedWords = new Map();
@@ -445,12 +434,14 @@ async function startGame(mode, opts = {}) {
     g.startedAt = Date.now();
     g.uniquePlayers = new Set();
     g.extendedRankMap = new Map();
+    g.roundScores = new Map();
+    g.hintedWords = new Set();
     // Unrelated-but-real words are always ranked past 1500 (the red zone), even
     // when the built-in list for a word is short — otherwise they'd land in
     // the green zone and earn points they haven't earned.
     g.nextExtendedRank = Math.max(orderedWords.length + 1, 1501);
 
-    broadcast({ type: 'game_started', mode, difficulty: g.difficulty });
+    broadcast({ type: 'game_started', mode });
     pushState();
 
     if (mode === 'test' && opts.autoplay) toggleTestAutoplay(true, opts.speed);
@@ -467,12 +458,13 @@ function giveUp() {
   // Put the answer on the board as the #1 row, so the finished list reads
   // top-down from the answer and stays on screen until the next round.
   const answer = {
-    user: 'Answer', word, rank: 1, isHost: false, isWin: true, isReveal: true,
-    ts: Date.now(), isRepeat: false, repeatOf: null, points: 0, total: 0,
+    user: 'Answer', word, rank: 1, isHost: false, isHint: false, isWin: true, isReveal: true,
+    ts: Date.now(), isRepeat: false, repeatOf: null, points: 0, total: 0, avatar: null,
   };
   g.board.set(word, answer);
   finishRound(null, { gaveUp: true });
-  broadcast({ type: 'give_up', word, entry: answer });
+  broadcast({ type: 'give_up', word, entry: answer, result: g.result });
+  pushState();
 }
 
 function finishRound(winnerUser, opts = {}) {
@@ -481,6 +473,10 @@ function finishRound(winnerUser, opts = {}) {
   const g = state.game;
   g.active = false;
   g.winner = winnerUser;
+  const topScorers = Array.from(g.roundScores.entries())
+    .map(([user, points]) => ({ user, points }))
+    .sort((a, b) => b.points - a.points)
+    .slice(0, 10);
   g.result = {
     word: g.targetWord,
     winner: winnerUser,
@@ -489,6 +485,8 @@ function finishRound(winnerUser, opts = {}) {
     players: g.uniquePlayers.size,
     points: opts.points || 0,
     total: opts.total || 0,
+    topScorers,
+    leaderboardTop: topLeaderboard(20),
   };
 }
 
@@ -545,7 +543,7 @@ function resolveRank(word) {
   return null;
 }
 
-function handleGuess(user, rawText, isHost = false) {
+function handleGuess(user, rawText, isHost = false, avatar = null) {
   const g = state.game;
   if (!g.active) return;
   const word = normalize((rawText || '').split(/\s+/)[0]);
@@ -564,6 +562,7 @@ function handleGuess(user, rawText, isHost = false) {
     if (!prior && rank != null) {
       points = pointsForRank(rank);
       lb.score += points;
+      if (points > 0) g.roundScores.set(user, (g.roundScores.get(user) || 0) + points);
     }
     if (isWin) lb.wins += 1;
     total = lb.score;
@@ -572,29 +571,66 @@ function handleGuess(user, rawText, isHost = false) {
   }
 
   const entry = {
-    user, word, rank, isHost, isWin, ts: Date.now(),
+    user, word, rank, isHost, isHint: false, isWin, ts: Date.now(),
     isRepeat,
     repeatOf: isRepeat ? prior.user : null,
     points,
     total,
+    avatar: avatar || null,
   };
 
   g.totalGuesses += 1;
   g.latest = entry;
 
-  // One row per distinct word; a real player's find replaces a host test entry.
+  // One row per distinct word; a real player's find replaces a host/hint test entry.
   if (rank != null) {
     const existing = g.board.get(word);
-    if (!existing || (existing.isHost && !isHost)) g.board.set(word, entry);
+    if (!existing || ((existing.isHost || existing.isHint) && !isHost)) g.board.set(word, entry);
   }
 
   broadcast({ type: 'guess', entry, totalGuesses: g.totalGuesses, players: g.uniquePlayers.size });
 
   if (isWin) {
     finishRound(user, { points, total });
-    broadcast({ type: 'win', user, word: g.targetWord, guessesUsed: g.totalGuesses, points, total });
+    broadcast({ type: 'win', user, word: g.targetWord, guessesUsed: g.totalGuesses, points, total, result: g.result });
     pushState();
   }
+}
+
+// How many not-yet-revealed words (excluding the answer itself) are left
+// to hint. Purely informational for the UI (disables the Hint button).
+function hintsRemaining() {
+  const g = state.game;
+  if (!g.active || !orderedWords.length) return 0;
+  let n = 0;
+  for (let i = 1; i < orderedWords.length; i++) {
+    const w = orderedWords[i];
+    if (!g.board.has(w)) n++;
+  }
+  return n;
+}
+
+// Reveals the single next-best word that hasn't been found or hinted yet
+// (i.e. the word ranked immediately above the current best guess). Never
+// reveals rank #1. Unlimited — can be pressed as many times as words remain.
+function giveHint() {
+  const g = state.game;
+  if (!g.active) { broadcast({ type: 'server_error', message: 'Start a round before asking for a hint.' }); return; }
+  for (let i = 1; i < orderedWords.length; i++) {
+    const w = orderedWords[i];
+    if (g.board.has(w)) continue; // already found or already hinted
+    const rank = rankMap.get(w);
+    const entry = {
+      user: 'Hint', word: w, rank, isHost: false, isHint: true, isWin: false, ts: Date.now(),
+      isRepeat: false, repeatOf: null, points: 0, total: 0, avatar: null,
+    };
+    g.board.set(w, entry);
+    g.hintedWords.add(w);
+    broadcast({ type: 'hint', entry });
+    pushState();
+    return;
+  }
+  broadcast({ type: 'server_error', message: 'No hints left — every ranked word has already been found!' });
 }
 
 // ============================================================
@@ -646,6 +682,20 @@ function extractText(data) {
 function extractViewerCount(data) {
   return data?.viewerCount ?? data?.memberCount ?? data?.count ?? null;
 }
+// Best-effort profile picture URL — different library versions expose it
+// under different shapes, so we try the plausible ones and fall back to
+// null (the client then shows a colored initial instead).
+function extractAvatar(data) {
+  return (
+    data?.user?.profilePicture?.url?.[0] ||
+    data?.user?.profilePicture?.urls?.[0] ||
+    data?.user?.avatarThumb?.url_list?.[0] ||
+    data?.user?.avatarThumb?.urlList?.[0] ||
+    data?.user?.avatarLarger?.url_list?.[0] ||
+    data?.profilePictureUrl ||
+    null
+  );
+}
 
 async function connectTikTok(username, attempt = 1) {
   clearTimeout(retryTimer);
@@ -673,6 +723,7 @@ async function connectTikTok(username, attempt = 1) {
         }
         const user = extractUsername(data);
         const text = extractText(data);
+        const avatar = extractAvatar(data);
         state.diagnostics.lastReceived = { user, text };
 
         broadcast({
@@ -684,7 +735,7 @@ async function connectTikTok(username, attempt = 1) {
 
         // Chat only counts as guesses during a Live round; Test and Offline
         // rounds ignore whatever the connected chat is saying.
-        if (state.mode === 'live') handleGuess(user, text, false);
+        if (state.mode === 'live') handleGuess(user, text, false, avatar);
       } catch (err) {
         console.error('[CHAT HANDLER ERROR]', err);
       }
@@ -785,7 +836,6 @@ function handleClientMessage(msg, ws) {
     case 'start_game':
       startGame(MODES.includes(msg.mode) ? msg.mode : 'live', {
         word: msg.word,
-        difficulty: msg.difficulty,
         length: msg.length,
         autoplay: !!msg.autoplay,
         speed: msg.speed,
@@ -793,7 +843,9 @@ function handleClientMessage(msg, ws) {
       break;
     case 'give_up':
       giveUp();
-      pushState();
+      break;
+    case 'request_hint':
+      giveHint();
       break;
     case 'host_guess':
       // Offline rounds: the host types guesses on behalf of real players,
