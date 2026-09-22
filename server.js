@@ -394,19 +394,33 @@ function pickFallbackWordByRandomLength() {
   return pickRandom(candidates);
 }
 
-// Real Contexto pulls its ranking from a semantic-similarity model.
-// We approximate that with Datamuse, blending two signals the same
-// way a richer embedding model would cover more of the neighborhood:
-//   - ml=   "means like"   -> primary semantic closeness
-//   - rel_trg= "triggers"  -> words strongly associated by co-occurrence,
-//                             fills gaps ml alone misses (e.g. "barista"
-//                             for "coffee")
+// Real Contexto pulls its ranking from a semantic-similarity model that
+// scores the ENTIRE vocabulary against the target and sorts by distance.
+// We approximate that with Datamuse, blending two signals the same way a
+// richer embedding model would cover more of the neighborhood:
+//   - ml=      "means like"  -> primary semantic closeness
+//   - rel_trg= "triggers"    -> words strongly associated by co-occurrence,
+//                               fills gaps ml alone misses (e.g. "barista"
+//                               for "coffee")
+// Datamuse hard-caps every relation query at 1000 results (asking for more
+// just returns the same 1000), so DATAMUSE_MAX below reflects that limit
+// rather than a number we chose — and the two relations are merged by
+// SCORE, not by "all of list A ahead of all of list B": each list uses its
+// own scale (meaning-closeness vs. association-strength aren't directly
+// comparable), so we normalize each to a 0..1 range, weight "means like"
+// higher since it's the primary signal, then sort the union by that
+// weighted score. This lets a very strong trigger word outrank a weak
+// means-like word, which a pure two-pass concatenation could never do.
 // This needs internet access, which Render's servers have.
+const DATAMUSE_MAX = 1000; // Datamuse's own per-query result ceiling
+const ML_WEIGHT = 1.0;     // "means like" — primary semantic signal
+const TRG_WEIGHT = 0.6;    // "triggers" — secondary, gap-filling signal
+
 async function buildPuzzleFromDatamuse(word) {
   const target = normalize(word);
   const [meaningRes, triggerRes] = await Promise.all([
-    fetch(`https://api.datamuse.com/words?ml=${encodeURIComponent(target)}&max=2500`),
-    fetch(`https://api.datamuse.com/words?rel_trg=${encodeURIComponent(target)}&max=1000`).catch(() => null),
+    fetch(`https://api.datamuse.com/words?ml=${encodeURIComponent(target)}&max=${DATAMUSE_MAX}`),
+    fetch(`https://api.datamuse.com/words?rel_trg=${encodeURIComponent(target)}&max=${DATAMUSE_MAX}`).catch(() => null),
   ]);
   if (!meaningRes.ok) throw new Error('Datamuse responded with status ' + meaningRes.status);
   const meaningData = await meaningRes.json();
@@ -414,35 +428,57 @@ async function buildPuzzleFromDatamuse(word) {
   let triggerData = [];
   try { if (triggerRes && triggerRes.ok) triggerData = await triggerRes.json(); } catch {}
 
-  const map = new Map();
-  const order = [target];
-  map.set(target, 1);
-  let rank = 2;
+  // Normalizes one relation's results to a comparable 0..1 scale (relative
+  // to the strongest match in that same list) and applies the signal's weight.
+  function normalizedEntries(data, weight) {
+    if (!Array.isArray(data) || !data.length) return [];
+    const maxScore = Math.max(1, ...data.map((d) => (typeof d.score === 'number' ? d.score : 0)));
+    return data.map((item) => ({
+      w: normalize(item.word),
+      score: (typeof item.score === 'number' ? item.score : 0) / maxScore * weight,
+    }));
+  }
 
-  // Primary pass: semantic "means like" results, in their given order.
-  for (const item of meaningData) {
-    const w = normalize(item.word);
-    if (w && !map.has(w) && !isTrivialVariant(target, w)) {
-      map.set(w, rank++);
-      order.push(w);
-    }
+  // Union both signals, keeping the higher of the two weighted scores for
+  // any word both relations happen to return.
+  const combined = new Map(); // word -> best weighted score
+  for (const { w, score } of normalizedEntries(meaningData, ML_WEIGHT)) {
+    if (!w || w === target || isTrivialVariant(target, w)) continue;
+    if (!combined.has(w) || combined.get(w) < score) combined.set(w, score);
   }
-  // Secondary pass: fill in association-triggered words not already covered.
-  for (const item of triggerData) {
-    const w = normalize(item.word);
-    if (w && !map.has(w) && !isTrivialVariant(target, w)) {
-      map.set(w, rank++);
-      order.push(w);
-    }
+  for (const { w, score } of normalizedEntries(triggerData, TRG_WEIGHT)) {
+    if (!w || w === target || isTrivialVariant(target, w)) continue;
+    if (!combined.has(w) || combined.get(w) < score) combined.set(w, score);
   }
+
+  // Sort by weighted score, descending (closest first), for the final ranking.
+  const rest = Array.from(combined.entries()).sort((a, b) => b[1] - a[1]).map(([w]) => w);
+
+  const order = [target, ...rest];
+  const map = new Map();
+  order.forEach((w, i) => map.set(w, i + 1));
   return { target, map, order };
 }
 
-// Skips near-duplicate inflections of the target (plurals, -ing/-ed forms)
-// so the game doesn't hand out a trivially "close" rank-2 slot to a word
-// that's really just the same word with a suffix.
+// Skips near-duplicate inflections of the target (plurals, verb forms, -ly
+// adverbs, etc.) so the game doesn't hand out a trivially "close" rank-2
+// slot to a word that's really just the same word with a suffix attached.
+// Two checks, applied to the normalized (lowercase, letters-only) forms:
+//   1. Shared stem after stripping a common inflectional suffix from either
+//      word (catches "run"/"running", "quick"/"quickly", "cook"/"cooked").
+//   2. Short shared-prefix fallback for anything the stemmer misses, kept
+//      tight (max 2-letter difference) to avoid over-matching real words
+//      that merely happen to start the same way ("cat" vs. "catalog").
+const INFLECTION_SUFFIXES = ['edly', 'ingly', 'ing', 'edness', 'ed', 'ers', 'er', 'ies', 'es', 's', 'ly'];
+function stem(w) {
+  for (const suf of INFLECTION_SUFFIXES) {
+    if (w.length > suf.length + 2 && w.endsWith(suf)) return w.slice(0, -suf.length);
+  }
+  return w;
+}
 function isTrivialVariant(target, candidate) {
-  if (candidate === target) return false; // handled separately
+  if (candidate === target) return false; // the target itself is handled separately, above
+  if (stem(target) === stem(candidate)) return true;
   const shorter = target.length <= candidate.length ? target : candidate;
   const longer = target.length <= candidate.length ? candidate : target;
   if (longer.startsWith(shorter) && longer.length - shorter.length <= 2) return true;
@@ -620,10 +656,19 @@ function ensureLeaderboardEntry(user) {
 }
 
 // Ranks a guessed word no matter how far it is from the target:
-//  - on the precomputed semantic shortlist -> that rank
+//  - on the precomputed semantic shortlist -> that rank, backed by the
+//    Datamuse score merge above (a genuine, distance-ordered rank)
 //  - not on the shortlist, but a real English word -> a rank appended
-//    just past the shortlist (always lands in the red zone, but it's
-//    still a real, stable number instead of a dead end)
+//    just past the shortlist, in the order it was FIRST GUESSED this
+//    round. This is a deliberate, honest limitation: Datamuse has no
+//    endpoint that scores one arbitrary word against another on demand,
+//    so there's no free way to place these words by true semantic
+//    distance. The number is stable (the same word always gets the same
+//    rank for the rest of the round, via extendedRankMap below) and it
+//    always lands past rank 1501 — the red zone — so it can never be
+//    mistaken for a close guess and never earns points (see
+//    POINTS_BY_RANK). Only its position *relative to other extended
+//    words* is guess-order, not similarity-order.
 //  - not a recognized English word at all -> null ("not a word")
 function resolveRank(word) {
   if (rankMap.has(word)) return rankMap.get(word);
