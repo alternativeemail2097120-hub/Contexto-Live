@@ -382,115 +382,209 @@ function pickWordByRandomLength(lengthKey) {
   return pickRandom(candidates);
 }
 
+// Test/Offline "Random" draws from the SAME whole-dictionary pool Live
+// mode uses (hundreds of thousands of words spanning every topic and
+// genre) rather than the small curated shortlist, so the secret word
+// stays fresh and unpredictable even across hours of continuous play.
+// buildPuzzleFromFallback() can rank a full board for any of these words
+// purely offline, via the lexical-affinity engine above.
 function pickFallbackWordByRandomLength() {
-  const targetLen = pickRandom(TARGET_LENGTHS);
+  if (ENGLISH_WORDS.size > 0) {
+    const word = pickWordByRandomLength('any');
+    if (word) return word;
+  }
+  // Extremely unlikely fallback: dictionary somehow not loaded yet.
   const keys = Object.keys(FALLBACK_PUZZLES);
-  let candidates = keys.filter((k) => normalize(k).length === targetLen);
-  if (!candidates.length) candidates = keys.filter((k) => {
-    const l = normalize(k).length;
-    return l >= 4 && l <= 12;
+  return pickRandom(keys);
+}
+
+// ------------------------------------------------------------
+// RANKING ENGINE
+//
+// Real Contexto pulls its ranking from a proprietary semantic-similarity
+// model. We approximate that in two stages so every round — Live, Test,
+// or Offline — can rank a professionally-ordered board at least 100,000
+// words deep, deterministically (the same word always lands on the same
+// rank within a round, never depending on guess order):
+//
+//   STAGE 1 — SEMANTIC CORE (Live mode, needs internet):
+//   Query Datamuse across eleven relation types (meaning, synonyms,
+//   co-occurrence triggers, modifier pairs, hypernyms/hyponyms,
+//   holonyms/meronyms, collocations) and merge them with Reciprocal
+//   Rank Fusion (RRF) — the same multi-source rank-merging technique
+//   search engines use — weighted so the strongest semantic signals
+//   dominate. This is what a single richer embedding model would give
+//   you, approximated from several narrower ones.
+//
+//   STAGE 2 — LEXICAL-AFFINITY EXTENSION (every mode, offline-capable):
+//   Everything the semantic core doesn't cover gets a deterministic rank
+//   from a bigram-overlap / shared-prefix / length-closeness score
+//   against the target, computed once per round over the full loaded
+//   dictionary and sorted. No network needed, so it's also what powers
+//   Test and Offline mode's full-dictionary vocabulary (see item 6 —
+//   widening the word pool — in buildPuzzleFromFallback below).
+// ------------------------------------------------------------
+
+// How many total ranked words a single round guarantees (target + core +
+// extension). Comfortably past the 100,000-rank requirement, with a safety
+// margin, while staying fast to compute once per round start.
+const EXTENDED_RANK_LIMIT = 120000;
+
+// Each Datamuse relation code, and how much it should count for in the
+// fused ranking. "ml" (meaning) and "syn" (synonyms) are the strongest
+// semantic signals; the rest fill in the kind of associative neighbors a
+// human player would also reach for (e.g. "barista" for "coffee").
+const RELATION_WEIGHTS = {
+  ml: 1.00,   // means like — primary semantic closeness
+  syn: 0.90,  // synonyms
+  trg: 0.65,  // triggers — statistically co-occurring words
+  jja: 0.45,  // nouns commonly modified by this adjective
+  jjb: 0.45,  // adjectives commonly used to modify this noun
+  spc: 0.40,  // "kind of" (more specific)
+  gen: 0.40,  // "kind of", inverse (more general)
+  com: 0.35,  // comprises / holonyms
+  par: 0.35,  // part of / meronyms
+  bga: 0.25,  // frequent followers
+  bgb: 0.25,  // frequent predecessors
+};
+const RELATION_MAX = 1000;   // Datamuse's practical per-query result cap
+const RRF_K = 60;            // Reciprocal Rank Fusion smoothing constant
+
+function datamuseUrl(code, word, max) {
+  const q = code === 'ml' ? `ml=${encodeURIComponent(word)}` : `rel_${code}=${encodeURIComponent(word)}`;
+  return `https://api.datamuse.com/words?${q}&max=${max}`;
+}
+async function fetchDatamuseRelation(code, word, max) {
+  const res = await fetch(datamuseUrl(code, word, max));
+  if (!res.ok) throw new Error('Datamuse ' + code + ' responded with status ' + res.status);
+  return res.json();
+}
+
+// Fetches every relation in parallel (a single slow/failed relation never
+// blocks the others — Promise.allSettled) and fuses them with weighted
+// Reciprocal Rank Fusion: a word that appears near the top of several
+// relations outranks one that only appears once, even far down a single
+// list. This is the "utmost professional" approximation of a full
+// semantic-similarity model available without training/hosting one.
+async function buildSemanticCore(target) {
+  const codes = Object.keys(RELATION_WEIGHTS);
+  const settled = await Promise.allSettled(codes.map((code) => fetchDatamuseRelation(code, target, RELATION_MAX)));
+
+  const fused = new Map(); // word -> fused score
+  let anyOk = false;
+  settled.forEach((res, i) => {
+    if (res.status !== 'fulfilled' || !Array.isArray(res.value)) return;
+    anyOk = true;
+    const weight = RELATION_WEIGHTS[codes[i]];
+    res.value.forEach((item, listRank) => {
+      const w = normalize(item.word);
+      if (!w || w === target || isTrivialVariant(target, w)) return;
+      const contribution = weight / (RRF_K + listRank + 1);
+      fused.set(w, (fused.get(w) || 0) + contribution);
+    });
   });
-  if (!candidates.length) candidates = keys;
-  return pickRandom(candidates);
+  if (!anyOk || fused.size < 20) throw new Error('Not enough semantic neighbors found for "' + target + '"');
+
+  return Array.from(fused.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([w]) => w);
 }
 
-// Real Contexto pulls its ranking from a semantic-similarity model that
-// scores the ENTIRE vocabulary against the target and sorts by distance.
-// We approximate that with Datamuse, blending two signals the same way a
-// richer embedding model would cover more of the neighborhood:
-//   - ml=      "means like"  -> primary semantic closeness
-//   - rel_trg= "triggers"    -> words strongly associated by co-occurrence,
-//                               fills gaps ml alone misses (e.g. "barista"
-//                               for "coffee")
-// Datamuse hard-caps every relation query at 1000 results (asking for more
-// just returns the same 1000), so DATAMUSE_MAX below reflects that limit
-// rather than a number we chose — and the two relations are merged by
-// SCORE, not by "all of list A ahead of all of list B": each list uses its
-// own scale (meaning-closeness vs. association-strength aren't directly
-// comparable), so we normalize each to a 0..1 range, weight "means like"
-// higher since it's the primary signal, then sort the union by that
-// weighted score. This lets a very strong trigger word outrank a weak
-// means-like word, which a pure two-pass concatenation could never do.
-// This needs internet access, which Render's servers have.
-const DATAMUSE_MAX = 1000; // Datamuse's own per-query result ceiling
-const ML_WEIGHT = 1.0;     // "means like" — primary semantic signal
-const TRG_WEIGHT = 0.6;    // "triggers" — secondary, gap-filling signal
-
-async function buildPuzzleFromDatamuse(word) {
-  const target = normalize(word);
-  const [meaningRes, triggerRes] = await Promise.all([
-    fetch(`https://api.datamuse.com/words?ml=${encodeURIComponent(target)}&max=${DATAMUSE_MAX}`),
-    fetch(`https://api.datamuse.com/words?rel_trg=${encodeURIComponent(target)}&max=${DATAMUSE_MAX}`).catch(() => null),
-  ]);
-  if (!meaningRes.ok) throw new Error('Datamuse responded with status ' + meaningRes.status);
-  const meaningData = await meaningRes.json();
-  if (!Array.isArray(meaningData) || meaningData.length < 20) throw new Error('Datamuse returned too few results for "' + target + '"');
-  let triggerData = [];
-  try { if (triggerRes && triggerRes.ok) triggerData = await triggerRes.json(); } catch {}
-
-  // Normalizes one relation's results to a comparable 0..1 scale (relative
-  // to the strongest match in that same list) and applies the signal's weight.
-  function normalizedEntries(data, weight) {
-    if (!Array.isArray(data) || !data.length) return [];
-    const maxScore = Math.max(1, ...data.map((d) => (typeof d.score === 'number' ? d.score : 0)));
-    return data.map((item) => ({
-      w: normalize(item.word),
-      score: (typeof item.score === 'number' ? item.score : 0) / maxScore * weight,
-    }));
-  }
-
-  // Union both signals, keeping the higher of the two weighted scores for
-  // any word both relations happen to return.
-  const combined = new Map(); // word -> best weighted score
-  for (const { w, score } of normalizedEntries(meaningData, ML_WEIGHT)) {
-    if (!w || w === target || isTrivialVariant(target, w)) continue;
-    if (!combined.has(w) || combined.get(w) < score) combined.set(w, score);
-  }
-  for (const { w, score } of normalizedEntries(triggerData, TRG_WEIGHT)) {
-    if (!w || w === target || isTrivialVariant(target, w)) continue;
-    if (!combined.has(w) || combined.get(w) < score) combined.set(w, score);
-  }
-
-  // Sort by weighted score, descending (closest first), for the final ranking.
-  const rest = Array.from(combined.entries()).sort((a, b) => b[1] - a[1]).map(([w]) => w);
-
-  const order = [target, ...rest];
-  const map = new Map();
-  order.forEach((w, i) => map.set(w, i + 1));
-  return { target, map, order };
-}
-
-// Skips near-duplicate inflections of the target (plurals, verb forms, -ly
-// adverbs, etc.) so the game doesn't hand out a trivially "close" rank-2
-// slot to a word that's really just the same word with a suffix attached.
-// Two checks, applied to the normalized (lowercase, letters-only) forms:
-//   1. Shared stem after stripping a common inflectional suffix from either
-//      word (catches "run"/"running", "quick"/"quickly", "cook"/"cooked").
-//   2. Short shared-prefix fallback for anything the stemmer misses, kept
-//      tight (max 2-letter difference) to avoid over-matching real words
-//      that merely happen to start the same way ("cat" vs. "catalog").
-const INFLECTION_SUFFIXES = ['edly', 'ingly', 'ing', 'edness', 'ed', 'ers', 'er', 'ies', 'es', 's', 'ly'];
-function stem(w) {
-  for (const suf of INFLECTION_SUFFIXES) {
-    if (w.length > suf.length + 2 && w.endsWith(suf)) return w.slice(0, -suf.length);
-  }
-  return w;
-}
+// Skips near-duplicate inflections of the target (plurals, -ing/-ed forms)
+// so the game doesn't hand out a trivially "close" rank-2 slot to a word
+// that's really just the same word with a suffix.
 function isTrivialVariant(target, candidate) {
-  if (candidate === target) return false; // the target itself is handled separately, above
-  if (stem(target) === stem(candidate)) return true;
+  if (candidate === target) return false; // handled separately
   const shorter = target.length <= candidate.length ? target : candidate;
   const longer = target.length <= candidate.length ? candidate : target;
   if (longer.startsWith(shorter) && longer.length - shorter.length <= 2) return true;
   return false;
 }
 
+async function buildPuzzleFromDatamuse(word) {
+  const target = normalize(word);
+  const core = await buildSemanticCore(target);
+  let order = [target, ...core];
+  const coreSet = new Set(order);
+  order = extendOrderWithLexicalAffinity(target, order, coreSet, EXTENDED_RANK_LIMIT + 1);
+  const map = new Map();
+  order.forEach((w, i) => map.set(w, i + 1));
+  return { target, map, order };
+}
+
+// ---- Stage 2 helpers: bigram-overlap lexical affinity (no network) ----
+function bigramIndex(c1, c2) { return (c1 - 97) * 26 + (c2 - 97); }
+
+function bigramProfile(word) {
+  const hist = new Uint8Array(676);
+  let count = 0;
+  for (let i = 0; i < word.length - 1; i++) {
+    const c1 = word.charCodeAt(i) - 97, c2 = word.charCodeAt(i + 1) - 97;
+    if (c1 < 0 || c1 > 25 || c2 < 0 || c2 > 25) continue;
+    const idx = bigramIndex(c1, c2);
+    if (hist[idx] < 255) hist[idx]++;
+    count++;
+  }
+  return { hist, count };
+}
+
+// Deterministic, dependency-free stand-in for a semantic-distance model:
+// scores a word by orthographic (bigram) overlap with the target, tempered
+// by shared prefix length and how close the two words are in length. It's
+// a lexical proxy rather than true semantics, but it is stable (the same
+// word always lands on the same rank), cheap enough to run over the whole
+// dictionary once per round, and needs no network — which is exactly what
+// lets Test/Offline mode share Live mode's full vocabulary (see item 6).
+function lexicalAffinityScore(target, targetProfile, word) {
+  let overlap = 0;
+  let wordCount = 0;
+  for (let i = 0; i < word.length - 1; i++) {
+    const c1 = word.charCodeAt(i) - 97, c2 = word.charCodeAt(i + 1) - 97;
+    if (c1 < 0 || c1 > 25 || c2 < 0 || c2 > 25) continue;
+    wordCount++;
+    if (targetProfile.hist[bigramIndex(c1, c2)] > 0) overlap++;
+  }
+  const union = targetProfile.count + wordCount - overlap;
+  const dice = union > 0 ? overlap / union : 0;
+  let prefix = 0;
+  const minLen = Math.min(word.length, target.length);
+  while (prefix < minLen && word[prefix] === target[prefix]) prefix++;
+  const lenPenalty = Math.abs(word.length - target.length) * 0.015;
+  return dice + prefix * 0.03 - lenPenalty;
+}
+
+// Fills in the rest of the loaded dictionary (skipping whatever's already
+// in coreOrder) up to `limit` total ranked words, so an off-topic-but-real
+// guess always lands on a real, stable, professionally-computed rank
+// instead of a dead end — or worse, a rank that depends on who happened
+// to guess it first.
+function extendOrderWithLexicalAffinity(target, coreOrder, coreSet, limit) {
+  const room = limit - coreOrder.length;
+  if (room <= 0 || !ENGLISH_WORDS.size) return coreOrder;
+  const targetProfile = bigramProfile(target);
+  const scored = [];
+  for (const w of ENGLISH_WORDS) {
+    if (coreSet.has(w)) continue;
+    scored.push([w, lexicalAffinityScore(target, targetProfile, w)]);
+  }
+  scored.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const extra = scored.length > room ? scored.slice(0, room) : scored;
+  return coreOrder.concat(extra.map(([w]) => w));
+}
+
+// Test/Offline: prefer the hand-curated word list when one exists (a
+// slightly richer, hand-picked near-neighborhood), then always extend
+// with the same offline lexical-affinity engine so ANY real word — not
+// just the ~15 curated targets — gets a full, deep, deterministic ranking.
 function buildPuzzleFromFallback(word) {
   const target = normalize(word);
-  const list = FALLBACK_PUZZLES[target];
-  if (!list) return null;
+  if (!target) return null;
+  const curated = FALLBACK_PUZZLES[target];
+  let order = curated ? curated.map(normalize).filter((w) => w && w !== target) : [];
+  order = [target, ...order];
+  const coreSet = new Set(order);
+  order = extendOrderWithLexicalAffinity(target, order, coreSet, EXTENDED_RANK_LIMIT + 1);
   const map = new Map();
-  const order = list.map(normalize);
   order.forEach((w, i) => map.set(w, i + 1));
   return { target, map, order };
 }
@@ -656,19 +750,10 @@ function ensureLeaderboardEntry(user) {
 }
 
 // Ranks a guessed word no matter how far it is from the target:
-//  - on the precomputed semantic shortlist -> that rank, backed by the
-//    Datamuse score merge above (a genuine, distance-ordered rank)
+//  - on the precomputed semantic shortlist -> that rank
 //  - not on the shortlist, but a real English word -> a rank appended
-//    just past the shortlist, in the order it was FIRST GUESSED this
-//    round. This is a deliberate, honest limitation: Datamuse has no
-//    endpoint that scores one arbitrary word against another on demand,
-//    so there's no free way to place these words by true semantic
-//    distance. The number is stable (the same word always gets the same
-//    rank for the rest of the round, via extendedRankMap below) and it
-//    always lands past rank 1501 — the red zone — so it can never be
-//    mistaken for a close guess and never earns points (see
-//    POINTS_BY_RANK). Only its position *relative to other extended
-//    words* is guess-order, not similarity-order.
+//    just past the shortlist (always lands in the red zone, but it's
+//    still a real, stable number instead of a dead end)
 //  - not a recognized English word at all -> null ("not a word")
 function resolveRank(word) {
   if (rankMap.has(word)) return rankMap.get(word);
@@ -735,28 +820,49 @@ function handleGuess(user, rawText, isHost = false, avatar = null) {
   }
 }
 
-// How many not-yet-revealed words (excluding the answer itself) are left
-// to hint. Purely informational for the UI (disables the Hint button).
+// If nobody has found or been hinted anything yet this round, the very
+// first hint anchors here instead of handing out the globally best word
+// (rank 2) outright — keeps the opening hint meaningful rather than a
+// near-spoiler.
+const INITIAL_HINT_ANCHOR = 250;
+
+// The best (lowest, i.e. closest-to-1) rank currently sitting on the
+// board, across both real finds and previous hints. Infinity if the
+// board is empty.
+function currentBestBoardRank() {
+  let best = Infinity;
+  for (const entry of state.game.board.values()) {
+    if (entry.rank != null && entry.rank < best) best = entry.rank;
+  }
+  return best;
+}
+
+// How much further a hint could still improve on the current best guess.
+// Approximate (doesn't account for already-hinted gaps in between) — it's
+// only used to size the Hint button's remaining count, not to pick ranks.
 function hintsRemaining() {
   const g = state.game;
   if (!g.active || !orderedWords.length) return 0;
-  let n = 0;
-  for (let i = 1; i < orderedWords.length; i++) {
-    const w = orderedWords[i];
-    if (!g.board.has(w)) n++;
-  }
-  return n;
+  const bestRank = currentBestBoardRank();
+  const anchor = bestRank === Infinity ? Math.min(INITIAL_HINT_ANCHOR, orderedWords.length) : bestRank;
+  return Math.max(0, anchor - 2);
 }
 
-// Reveals the single next-best word that hasn't been found or hinted yet
-// (i.e. the word ranked immediately above the current best guess). Never
-// reveals rank #1. Unlimited — can be pressed as many times as words remain.
+// Reveals a word ranked only slightly better than the current best guess
+// on the board — never a big jump straight to rank #2 — by walking
+// backward, rank by rank, from just below the current best until it finds
+// one that hasn't been found or hinted yet. This keeps each hint a small,
+// earned step closer to the answer rather than one hint solving the round.
 function giveHint() {
   const g = state.game;
   if (!g.active) { broadcast({ type: 'server_error', message: 'Start a round before asking for a hint.' }); return; }
-  for (let i = 1; i < orderedWords.length; i++) {
-    const w = orderedWords[i];
-    if (g.board.has(w)) continue; // already found or already hinted
+
+  const bestRank = currentBestBoardRank();
+  const anchor = bestRank === Infinity ? Math.min(INITIAL_HINT_ANCHOR, orderedWords.length) : bestRank;
+
+  for (let r = anchor - 1; r >= 2; r--) {
+    const w = orderedWords[r - 1];
+    if (!w || g.board.has(w)) continue; // already found or already hinted
     const rank = rankMap.get(w);
     const entry = {
       user: 'Hint', word: w, rank, isHost: false, isHint: true, isWin: false, ts: Date.now(),
@@ -768,7 +874,7 @@ function giveHint() {
     pushState();
     return;
   }
-  broadcast({ type: 'server_error', message: 'No hints left — every ranked word has already been found!' });
+  broadcast({ type: 'server_error', message: 'No better hint available right now — your guesses are already this close!' });
 }
 
 // ============================================================
@@ -1000,6 +1106,12 @@ function handleClientMessage(msg, ws) {
       break;
     case 'test_autoplay':
       toggleTestAutoplay(!!msg.on, msg.speed);
+      break;
+    case 'reset_leaderboard':
+      // Manual, host-triggered wipe of the all-time session leaderboard.
+      // Does not touch the current round in progress.
+      state.leaderboard = {};
+      pushState();
       break;
     default:
       safeSend(ws, { type: 'server_error', message: 'Unknown action: ' + msg.type });

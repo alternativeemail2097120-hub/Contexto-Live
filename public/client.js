@@ -51,6 +51,7 @@
   const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   // Status header / diagnostics
+  const diagnosticsEl = el('diagnostics');
   const diagBtn = el('diagBtn');
   const diagPanel = el('diagPanel');
   const connDot = el('connDot');
@@ -63,6 +64,9 @@
   const diagLast = el('diagLast');
   const diagRaw = el('diagRaw');
   const diagDict = el('diagDict');
+  const collapseBtn = el('collapseBtn');
+  const expandTab = el('expandTab');
+  const expandDot = el('expandDot');
 
   // Hero + banners
   const heroSub = el('heroSub');
@@ -125,6 +129,9 @@
   const overlayScorers = el('overlayScorers');
   const leaderboardOverlay = el('leaderboardOverlay');
   const overlayLeaderboardList = el('overlayLeaderboardList');
+  const leaderboardCloseBtn = el('leaderboardCloseBtn');
+  const viewLeaderboardBtn = el('viewLeaderboardBtn');
+  const resetLeaderboardBtn = el('resetLeaderboardBtn');
 
   // ============================================================
   // Small helpers
@@ -223,6 +230,36 @@
   });
 
   // ============================================================
+  // Collapsible top status bar (item 4) — hide it entirely for a
+  // cleaner screen, with a slim pull-tab to bring it back any time.
+  // Remembered between visits, same as the other settings.
+  // ============================================================
+  function syncTopOffset() {
+    if (diagnosticsEl.classList.contains('collapsed')) {
+      document.documentElement.style.setProperty('--topbar-h', expandTab.offsetHeight + 'px');
+    } else {
+      document.documentElement.style.removeProperty('--topbar-h');
+    }
+  }
+  function setTopCollapsed(collapsed) {
+    diagnosticsEl.classList.toggle('collapsed', collapsed);
+    expandTab.classList.toggle('hidden', !collapsed);
+    collapseBtn.setAttribute('aria-expanded', String(!collapsed));
+    requestAnimationFrame(syncTopOffset);
+  }
+  collapseBtn.addEventListener('click', () => {
+    settings.topCollapsed = true;
+    saveSettings();
+    setTopCollapsed(true);
+  });
+  expandTab.addEventListener('click', () => {
+    settings.topCollapsed = false;
+    saveSettings();
+    setTopCollapsed(false);
+  });
+  window.addEventListener('resize', syncTopOffset);
+
+  // ============================================================
   // Fullscreen. The layout keeps its fixed maximum width and stays
   // centered, so going fullscreen never stretches the game.
   // ============================================================
@@ -270,6 +307,7 @@
   const DEFAULTS = {
     mode: 'live', username: '', length: 'any',
     autoplay: true, speed: 'normal', playerName: '',
+    topCollapsed: false,
   };
   function loadSettings() {
     try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; }
@@ -764,6 +802,46 @@
   }
 
   // ============================================================
+  // Manual leaderboard controls (item 7) — view any time from Settings,
+  // and reset the all-time session leaderboard (double-tap to confirm,
+  // same pattern as "End round").
+  // ============================================================
+  function closeLeaderboardOverlay() {
+    clearTimeout(overlayTimer2);
+    leaderboardOverlay.classList.add('hidden');
+  }
+  viewLeaderboardBtn.addEventListener('click', () => {
+    const top = (lastState && lastState.leaderboardTop) || [];
+    renderLbList(overlayLeaderboardList, top, 'No scores yet this session.');
+    roundEndOverlay.classList.add('hidden');
+    leaderboardOverlay.classList.remove('hidden');
+  });
+  leaderboardCloseBtn.addEventListener('click', closeLeaderboardOverlay);
+  leaderboardOverlay.addEventListener('click', (e) => { if (e.target === leaderboardOverlay) closeLeaderboardOverlay(); });
+
+  let resetArmed = false;
+  let resetArmTimer = null;
+  function disarmReset() {
+    resetArmed = false;
+    resetLeaderboardBtn.textContent = 'Reset leaderboard';
+    resetLeaderboardBtn.classList.remove('armed');
+  }
+  resetLeaderboardBtn.addEventListener('click', () => {
+    if (!resetArmed) {
+      resetArmed = true;
+      resetLeaderboardBtn.textContent = 'Tap again to confirm';
+      resetLeaderboardBtn.classList.add('armed');
+      clearTimeout(resetArmTimer);
+      resetArmTimer = setTimeout(disarmReset, 3000);
+      return;
+    }
+    clearTimeout(resetArmTimer);
+    disarmReset();
+    send({ type: 'reset_leaderboard' });
+    toast('Leaderboard reset.');
+  });
+
+  // ============================================================
   // Server -> client message handling
   // ============================================================
   function handleServerMessage(msg) {
@@ -828,6 +906,7 @@
     diagStatus.textContent = conn.status;
     connLabel.textContent = conn.message;
     connDot.className = 'dot dot-' + conn.status;
+    expandDot.className = 'dot dot-' + conn.status;
     if (state.mode) {
       modeBadge.textContent = MODE_META[state.mode].label;
       modeBadge.className = 'mode-badge mode-' + state.mode;
@@ -903,6 +982,7 @@
   // Initial paint
   // ============================================================
   selectMode(settings.mode);
+  setTopCollapsed(!!settings.topCollapsed);
   updateRoundButton();
   updateHintButton();
   // Both sheets start closed — a clean, uncluttered first screen. Tap the
