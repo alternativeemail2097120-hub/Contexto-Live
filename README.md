@@ -1,9 +1,12 @@
 # Contexto LIVE — play a word-guessing game with your TikTok chat
 
 This is a complete, ready-to-deploy web app. Your audience guesses a secret
-word by typing in TikTok LIVE chat; the app tells everyone how "close" each
-guess is, just like the game Contexto. You control it all from your phone
-during the stream.
+word — picked at random from a dictionary of hundreds of thousands of real
+English words — by typing in TikTok LIVE chat; the app tells everyone how
+"close" each guess is, just like the game Contexto. It's built to be run
+from a single Android phone while you're live: a clean, icon-only control
+bar up top, and settings tucked away in a slide-up panel so they never
+clutter the screen.
 
 You do not need to write or understand any code. Follow the steps below in
 order. It will take about 20–30 minutes the first time.
@@ -84,33 +87,41 @@ address at the top of the page, like `https://contexto-live.onrender.com`
 
 ## Step 4 — Play
 
-1. Open your Render web address on your phone (bookmark it).
+1. Open your Render web address on your phone (bookmark it). Built for
+   playing one-handed from a single Android phone while you're live —
+   everything you need lives at the top of the screen, nothing is pinned
+   to the bottom where your thumb (or your phone case) gets in the way.
 2. At the top is a small status bar — it will say **"Not connected yet"**.
    Tap it any time to see live diagnostics (see below).
-3. Right below the status bar is the **action bar** — every control you
-   need lives here, always at the top, never at the bottom of the screen:
-   - **⚙️ Settings** — opens the panel where you pick a mode and its options.
-   - **💡 Hint** — see "Hints" below. Greyed out until a round is running.
-   - **⌨️ Enter a word** — opens the box where you (the host) can type a
-     guess yourself. Opening one panel folds the other away automatically,
-     so they never fight for space.
+3. Right below the status bar is a compact **action bar** with just four
+   controls, so the screen stays clean and out of your way:
+   - **⚙️ Settings icon** — opens a panel that slides up from the bottom
+     where you pick a mode and its options, then slides away again. A
+     small colored dot on the icon always shows which mode you're in
+     (pink = Live, cyan = Test, gold = Offline) even with the panel closed.
+   - **💡 Hint icon** — see "Hints" below. Greyed out until a round is running.
+   - **⌨️ Enter-a-word icon** — opens a slide-up panel where you (the host)
+     can type a guess yourself. Opening one panel closes the other
+     automatically, so they never fight for space, and tapping outside
+     the panel (or the ✕) closes it.
    - **Start round / End round** — always visible, right there in the bar.
 4. In **Settings**, pick a mode with the **Live / Test / Offline** switch:
    - **Live** — reads your real TikTok LIVE chat. Type your TikTok username
      (without the `@`) and tap **Connect** once you're already LIVE. Then
      choose a **Word length** (Any / Short / Medium / Long) and, if you
-     like, type your own **Secret word** (leave it empty for a random one).
+     like, type your own **Secret word** (leave it empty for a random one
+     drawn from a dictionary of hundreds of thousands of real English
+     words — see "A very large, truly random word pool" below).
      There's no difficulty setting — Contexto is open to any word.
    - **Test** — rehearse with fake viewers, no TikTok needed. Pick a secret
      word (or Random), switch **Simulated chat** on or off, and choose its
      **Speed**.
    - **Offline** — no TikTok and no internet. You type each guess yourself,
-     with the player's name, in the **Enter a word** box. Pick a secret word
-     (or Random).
+     with the player's name, in the **Enter a word** panel. Pick a secret
+     word (or Random).
    Your choices are remembered on this phone for next time.
-5. Tap **Start round**. Both panels fold away automatically so the game has
-   the whole screen; tap **⚙️ Settings** or **⌨️ Enter a word** any time to
-   open them again.
+5. Tap **Start round**. Both panels close automatically so the game has
+   the whole screen; tap the **⚙️** or **⌨️** icon any time to reopen them.
 6. Guesses appear in **Live guesses**, and the list keeps itself
    continuously, automatically sorted: the closest word is always on top,
    and rows glide into place the instant a new guess changes the order.
@@ -126,11 +137,11 @@ address at the top of the page, like `https://contexto-live.onrender.com`
    When a round ends — someone finds the word, or you end it — the board
    **stays exactly as it is**, including the #1 exact-answer row, still
    sorted top to bottom. Nothing disappears until you start the next round.
-7. **Hints.** Tap **💡 Hint** any time during a round to reveal the single
-   next-best word — the word ranked just above whatever the closest guess
-   found so far. It's unlimited (tap it as many times as you like) and it
-   will **never reveal the #1 answer itself**. A hinted word shows up in
-   Live guesses with a dashed gold border and "💡 Hint" in place of a
+7. **Hints.** Tap the **💡** icon any time during a round to reveal the
+   single next-best word — the word ranked just above whatever the closest
+   guess found so far. It's unlimited (tap it as many times as you like)
+   and it will **never reveal the #1 answer itself**. A hinted word shows up
+   in Live guesses with a dashed gold border and "💡 Hint" in place of a
    name — and if a real viewer later guesses that same word themselves,
    it upgrades to their name and scores normally.
 8. **Points.** Every time someone scores, a small floating card pops up in
@@ -187,7 +198,18 @@ Tap the bar to expand it and see:
 
 ## Notes on how the game works
 
-- Live rounds pull a target word and its list of related words from a
+- **A very large, truly random word pool.** In Live mode, the secret word
+  is picked at random from the game's entire English dictionary — hundreds
+  of thousands of real words (see "A very large dictionary" below) — not
+  from a small curated list. Every round is a genuinely fresh word; two
+  broadcasters (or two rounds back to back) essentially never see the same
+  handful of words. A short blocklist keeps a small set of slurs/profanity
+  from ever being *picked* as the secret word (they're still recognized as
+  real words if someone guesses them). If a randomly picked word happens to
+  be too obscure for the ranking service to work with, the game quietly
+  tries a few more random words before ever falling back to a small backup
+  list — see the point below on the ranking service.
+- Live rounds pull the target word's list of related words from a
   free word-similarity service (Datamuse), blending two signals —
   "means like" for core meaning and "triggers" for words strongly
   associated by everyday usage — the same way a real semantic model
@@ -204,8 +226,9 @@ Tap the bar to expand it and see:
   word's length is randomized every round from 4 to 12 letters (or your
   chosen Short / Medium / Long range in Live mode), and there are no
   letter boxes revealing how long it is.
-- **A very large dictionary.** To decide what counts as a real English word,
-  the game merges several word lists: the built-in one (about 275,000
+- **A very large dictionary.** To decide what counts as a real English word
+  (and to supply Live mode's secret-word pool above), the game merges
+  several word lists: the built-in one (about 275,000
   words) plus large public lists that the server downloads once when it
   starts. Junk in those lists (stray letters, capitalised names,
   hyphenated fragments) is filtered out. The status drawer shows the
@@ -219,8 +242,13 @@ Tap the bar to expand it and see:
   **Latest** line but not in the sorted list.
 - **One row per word.** If several people guess the same word it appears
   once in Live guesses, next to whoever found it first.
-- Test and Offline rounds use a small built-in word list instead, so they
-  work with no internet at all.
+- Test and Offline rounds use a small built-in word list instead of the
+  full dictionary, so they work with **no internet at all** — this is a
+  deliberate trade-off: those two modes need a fully precomputed ranking
+  for every word up front (no Datamuse call), which only exists for the
+  handful of words in `data/fallback-puzzles.json`. Add more entries to
+  that file (secret word → an ordered list of related words) to grow
+  their pool.
 - **Points are small on purpose.** Only the closest ten words score, and
   you earn points only when you are the first person to find a word in a
   round:
@@ -265,6 +293,8 @@ Tap the status bar at the top of the game and look at the **Dictionary**
 line. It shows how many words the game knows. Right after a restart it
 says "Loading…" for a few seconds while the big lists download; then it
 shows the final total. If the total is **400,000 or more**, you're done.
+This total is also exactly the pool Live mode draws its random secret
+words from, so a bigger dictionary means more variety.
 
 If it says **"under 400,000"**, one of the downloads didn't work (check the
 `[dictionary]` lines in Render's **Logs** to see which). You can add words
@@ -277,6 +307,13 @@ yourself in either of two ways:
 - **Point to a list online.** In Render, add an environment variable named
   `WORD_LIST_URLS` and set it to the web address of a plain-text word list
   (use commas to separate several). The server downloads it on startup.
+
+**Keeping specific words out of the secret-word pool.** A short built-in
+blocklist already keeps common slurs/profanity from ever being picked as
+the *secret* word (they're still valid guesses). To add your own, create
+a file `data/word-blocklist.txt` in your repository — one word per line —
+and every word in it will never be selected as a secret word, in Live,
+Test, or Offline mode alike.
 
 Nothing else needs to change.
 
@@ -297,8 +334,9 @@ tiktok-contexto-live/
 │   ├── client.js
 │   └── style.css
 └── data/
-    ├── words.json           ← Live-mode word pool
+    ├── words.json           ← small backup pool (used only if the dictionary can't load)
     ├── fallback-puzzles.json ← Test/Offline word pool + backup for Live
+    ├── word-blocklist.txt   ← optional — words to never pick as the secret word
     └── dictionaries/         ← drop extra .txt word lists here (optional)
 ```
 

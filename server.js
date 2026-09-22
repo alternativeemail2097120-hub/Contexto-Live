@@ -34,6 +34,15 @@ const DICTIONARY_TARGET = 400000;
 const ENGLISH_WORDS = new Set();
 const dictionary = { total: 0, target: DICTIONARY_TARGET, status: 'loading' };
 
+// Words the game will never pick as the SECRET word, even though they're
+// still valid to type as a guess. Keeps a broadcast-safe target word while
+// leaving the guessable dictionary untouched. Add more, one per line, in
+// data/dictionaries/blocklist.txt (see the README) if you find gaps.
+const TARGET_BLOCKLIST = new Set(('nigger nigga fuck fucking fucker fucked shit shitty cunt cock cocks dick dicks ' +
+  'pussy pussies bitch bitches asshole assholes whore whores slut sluts rape raping rapist ' +
+  'faggot faggots fag fags retard retarded nazi nazis hitler molest molester paedophile pedophile ' +
+  'pedo incest bestiality suicide masturbate masturbation orgasm penis vagina semen sperm ejaculate').split(' '));
+
 const TWO_LETTER_WORDS = new Set(('aa ab ad ae ag ah ai al am an ar as at aw ax ay ba be bi bo by ca ch da de do ' +
   'ea ed ee ef eh el em en er es ex fa fe fy gi go gu ha he hi hm ho id if in io is it jo ka ki la li lo ma me mi ' +
   'mm mo mu my na ne no nu od oe of oh oi ok om on oo op or os ou ow ox oy pa pe pi po qi re sh si so st ta te ti ' +
@@ -63,6 +72,17 @@ function addWords(text, { strict = false } = {}) {
 
 const DICT_DIR = path.join(__dirname, 'data', 'dictionaries');
 const DICT_CACHE_FILE = path.join(os.tmpdir(), 'contexto-english-words.v1.txt');
+const BLOCKLIST_FILE = path.join(__dirname, 'data', 'word-blocklist.txt');
+
+// Optional: add your own words to never use as a secret word, one per line.
+try {
+  if (fs.existsSync(BLOCKLIST_FILE)) {
+    for (const line of fs.readFileSync(BLOCKLIST_FILE, 'utf8').split(/\r?\n/)) {
+      const w = line.trim().toLowerCase();
+      if (w) TARGET_BLOCKLIST.add(w);
+    }
+  }
+} catch { /* optional file — ignore if missing/unreadable */ }
 
 // 1) bundled list  2) your own .txt files  3) list remembered from last download
 try {
@@ -277,8 +297,8 @@ function pushState() { broadcast({ type: 'state', state: getPublicState() }); }
 // ============================================================
 const WORD_BANK = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'words.json'), 'utf8'));
 const FALLBACK_PUZZLES = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'fallback-puzzles.json'), 'utf8'));
-// Every word from every old difficulty tier, merged into one pool — Contexto
-// picks from the whole pool, not a difficulty tier.
+// Small curated pool, used only when the full dictionary isn't ready yet
+// (the first instant after a cold start) — see pickWordByRandomLength().
 const ALL_LIVE_WORDS = Array.from(new Set([...(WORD_BANK.easy || []), ...(WORD_BANK.medium || []), ...(WORD_BANK.hard || [])]));
 // Words the host can pick from in Test and Offline mode (built-in, no internet needed).
 const WORD_CHOICES = Object.keys(FALLBACK_PUZZLES).sort();
@@ -296,16 +316,69 @@ const TARGET_LENGTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12];
 // Host-selectable length ranges (Live mode). "any" keeps the full 4-12 spread.
 const LENGTH_RANGES = { any: [4, 12], short: [4, 6], medium: [7, 9], long: [10, 12] };
 
+// ------------------------------------------------------------
+// LIVE-MODE SECRET WORD POOL
+// Live mode's secret word is picked at random from the ENTIRE English
+// dictionary loaded above (hundreds of thousands of legitimate words) —
+// never from a small curated list — so no two broadcasters (and no two
+// rounds) are stuck seeing the same handful of words. The pool is bucketed
+// by length once, then re-bucketed whenever the dictionary grows (e.g. once
+// the remote word lists finish downloading a few seconds after startup).
+// ------------------------------------------------------------
+const livePoolByLength = new Map(); // length -> string[]
+let livePoolBuiltFromSize = 0;
+
+function isGoodLiveTarget(w) {
+  // Real, single, unbroken word; never something we've explicitly excluded
+  // from being a secret word (still fine as something a player can guess).
+  return !TARGET_BLOCKLIST.has(w);
+}
+
+function rebuildLiveWordPool() {
+  livePoolByLength.clear();
+  for (const len of TARGET_LENGTHS) livePoolByLength.set(len, []);
+  for (const w of ENGLISH_WORDS) {
+    const len = w.length;
+    if (len < 4 || len > 12) continue;
+    if (!isGoodLiveTarget(w)) continue;
+    livePoolByLength.get(len).push(w);
+  }
+  livePoolBuiltFromSize = ENGLISH_WORDS.size;
+}
+
+// Rebuild the pool automatically the first time it's needed, and again any
+// time the dictionary has grown since (e.g. after the remote word lists finish
+// downloading in the background).
+function liveWordPool(len) {
+  if (livePoolBuiltFromSize !== ENGLISH_WORDS.size) rebuildLiveWordPool();
+  return livePoolByLength.get(len) || [];
+}
+
 function pickWordByRandomLength(lengthKey) {
   const [lo, hi] = LENGTH_RANGES[lengthKey] || LENGTH_RANGES.any;
   const validLens = TARGET_LENGTHS.filter((l) => l >= lo && l <= hi);
-  const targetLen = pickRandom(validLens.length ? validLens : TARGET_LENGTHS);
+  const lens = validLens.length ? validLens : TARGET_LENGTHS;
+
+  // Prefer the full dictionary pool — this is what makes every round a
+  // genuinely random word from the whole English language.
+  if (ENGLISH_WORDS.size > 0) {
+    const targetLen = pickRandom(lens);
+    let candidates = liveWordPool(targetLen);
+    if (!candidates.length) {
+      // Nothing of that exact length: fall back to the whole chosen range.
+      candidates = lens.flatMap((l) => liveWordPool(l));
+    }
+    if (candidates.length) return pickRandom(candidates);
+  }
+
+  // Extremely unlikely fallback: dictionary somehow empty. Use the small
+  // curated list so Live mode still works.
+  const targetLen = pickRandom(lens);
   let candidates = ALL_LIVE_WORDS.filter((w) => normalize(w).length === targetLen);
   if (!candidates.length) {
-    // Nothing of this exact length: any word inside the chosen length range.
     candidates = ALL_LIVE_WORDS.filter((w) => { const l = normalize(w).length; return l >= lo && l <= hi; });
   }
-  if (!candidates.length) candidates = ALL_LIVE_WORDS; // last resort
+  if (!candidates.length) candidates = ALL_LIVE_WORDS;
   return pickRandom(candidates);
 }
 
@@ -396,16 +469,36 @@ async function startGame(mode, opts = {}) {
 
     if (mode === 'live') {
       if (opts.word && custom.length < 3) throw new Error('The secret word needs at least 3 letters.');
-      const word = custom || pickWordByRandomLength(opts.length);
-      try {
-        puzzle = await buildPuzzleFromDatamuse(word);
-      } catch (err) {
-        console.error('[DATAMUSE FAILED]', err);
-        if (custom && !FALLBACK_PUZZLES[custom]) {
-          throw new Error(`Could not build a ranking for "${custom}". Check the spelling, or leave the secret word empty for a random one.`);
+      if (custom) {
+        try {
+          puzzle = await buildPuzzleFromDatamuse(custom);
+        } catch (err) {
+          console.error('[DATAMUSE FAILED]', err);
+          if (!FALLBACK_PUZZLES[custom]) {
+            throw new Error(`Could not build a ranking for "${custom}". Check the spelling, or leave the secret word empty for a random one.`);
+          }
+          broadcast({ type: 'server_error', message: 'Could not reach the word-similarity service, using a backup word instead.' });
+          puzzle = buildPuzzleFromFallback(custom);
         }
-        broadcast({ type: 'server_error', message: 'Could not reach the word-similarity service, using a backup word instead.' });
-        puzzle = buildPuzzleFromFallback(custom || pickRandom(Object.keys(FALLBACK_PUZZLES)));
+      } else {
+        // Random word: try a handful of fresh random picks from the full
+        // dictionary before giving up — an obscure pick that Datamuse can't
+        // rank well shouldn't mean settling for the small curated list.
+        const RANDOM_ATTEMPTS = 6;
+        let lastErr = null;
+        for (let attempt = 1; attempt <= RANDOM_ATTEMPTS && !puzzle; attempt++) {
+          const word = pickWordByRandomLength(opts.length);
+          try {
+            puzzle = await buildPuzzleFromDatamuse(word);
+          } catch (err) {
+            lastErr = err;
+          }
+        }
+        if (!puzzle) {
+          console.error('[DATAMUSE FAILED after retries]', lastErr);
+          broadcast({ type: 'server_error', message: 'Could not reach the word-similarity service, using a backup word instead.' });
+          puzzle = buildPuzzleFromFallback(pickRandom(Object.keys(FALLBACK_PUZZLES)));
+        }
       }
     } else {
       // Test and Offline both use the built-in word list, so they work with no internet.

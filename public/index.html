@@ -43,114 +43,20 @@
     </div>
   </header>
 
-  <!-- ===== ACTION BAR: every control lives up here, nothing pinned to the bottom ===== -->
+  <!-- ===== ACTION BAR: compact icon controls + the one button that matters ===== -->
   <div id="actionBar" class="action-bar">
-    <button id="settingsToggle" class="pill-btn" type="button" aria-expanded="true" aria-controls="settingsBody">
-      <span class="pill-icon">⚙️</span> Settings
-      <span id="settingsSummary" class="settings-summary"></span>
-      <span class="caret" aria-hidden="true">▾</span>
+    <button id="settingsToggle" class="icon-pill" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="settingsSheet" title="Settings">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span id="modePip" class="mode-pip"></span>
     </button>
-    <button id="hintBtn" class="pill-btn" type="button" disabled title="Reveal the next-best word (never the answer)">
-      <span class="pill-icon">💡</span> Hint
+    <button id="hintBtn" class="icon-pill" type="button" disabled title="Reveal the next-best word (never the answer)">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.5.4.8 1 .8 1.6v.2h6.4v-.2c0-.6.3-1.2.8-1.6A7 7 0 0 0 12 2Z"/></svg>
     </button>
-    <button id="dockToggle" class="pill-btn" type="button" aria-expanded="true" aria-controls="dockBody">
-      <span class="pill-icon">⌨️</span> Enter a word
-      <span class="caret" aria-hidden="true">▾</span>
+    <button id="dockToggle" class="icon-pill" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="hostSheet" title="Enter a word">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12"/></svg>
     </button>
     <button id="roundBtn" class="btn btn-primary" type="button">Start round</button>
   </div>
-
-  <!-- ===== SETTINGS PANEL (collapsible, opened from the action bar) ===== -->
-  <section id="settings" class="settings" data-mode="live">
-    <div id="settingsBody" class="collapse" data-open="true">
-      <div class="collapse-inner">
-
-        <div class="seg" role="tablist" aria-label="Game mode">
-          <button id="tab-live" class="seg-btn" type="button" role="tab" data-mode="live" aria-selected="true" aria-controls="pane-live">Live</button>
-          <button id="tab-test" class="seg-btn" type="button" role="tab" data-mode="test" aria-selected="false" aria-controls="pane-test" tabindex="-1">Test</button>
-          <button id="tab-offline" class="seg-btn" type="button" role="tab" data-mode="offline" aria-selected="false" aria-controls="pane-offline" tabindex="-1">Offline</button>
-        </div>
-        <p id="modeHint" class="mode-hint"></p>
-
-        <!-- Live -->
-        <div id="pane-live" class="mode-pane" data-pane="live" role="tabpanel" aria-labelledby="tab-live">
-          <div class="fields">
-            <div class="field wide">
-              <label class="label" for="tiktokUsername">TikTok username</label>
-              <div class="inline">
-                <input id="tiktokUsername" class="input" type="text" placeholder="username (without @)" autocomplete="off" autocapitalize="none" spellcheck="false" />
-                <button id="connectBtn" class="btn btn-outline" type="button">Connect</button>
-              </div>
-              <p id="connNote" class="field-note"></p>
-            </div>
-            <div class="field wide">
-              <label class="label" for="lengthSelect">Word length</label>
-              <select id="lengthSelect" class="select">
-                <option value="any">Any (4–12 letters)</option>
-                <option value="short">Short (4–6 letters)</option>
-                <option value="medium">Medium (7–9 letters)</option>
-                <option value="long">Long (10–12 letters)</option>
-              </select>
-            </div>
-            <div class="field wide">
-              <label class="label" for="liveWord">Secret word (optional)</label>
-              <input id="liveWord" class="input" type="text" placeholder="Leave empty for a random word" autocomplete="off" autocapitalize="none" spellcheck="false" />
-            </div>
-          </div>
-        </div>
-
-        <!-- Test -->
-        <div id="pane-test" class="mode-pane hidden" data-pane="test" role="tabpanel" aria-labelledby="tab-test">
-          <div class="fields">
-            <div class="field wide">
-              <label class="label" for="testWord">Secret word</label>
-              <select id="testWord" class="select"><option value="">Random</option></select>
-            </div>
-            <div class="field">
-              <span class="label">Simulated chat</span>
-              <label class="switch">
-                <input id="autoplayToggle" type="checkbox" checked />
-                <span class="track" aria-hidden="true"></span>
-                <span id="autoplayText">On</span>
-              </label>
-            </div>
-            <div class="field">
-              <label class="label" for="speedSelect">Speed</label>
-              <select id="speedSelect" class="select">
-                <option value="slow">Slow</option>
-                <option value="normal">Normal</option>
-                <option value="fast">Fast</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <!-- Offline -->
-        <div id="pane-offline" class="mode-pane hidden" data-pane="offline" role="tabpanel" aria-labelledby="tab-offline">
-          <div class="fields">
-            <div class="field wide">
-              <label class="label" for="offlineWord">Secret word</label>
-              <select id="offlineWord" class="select"><option value="">Random</option></select>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  </section>
-
-  <!-- ===== HOST WORD ENTRY (collapsible, opened from the action bar) ===== -->
-  <nav id="hostDock" class="host-dock" aria-label="Host word entry">
-    <div id="dockBody" class="collapse" data-open="true">
-      <div class="collapse-inner">
-        <div class="dock-form">
-          <input id="playerName" class="input input-name hidden" type="text" placeholder="Player" maxlength="24" autocomplete="off" aria-label="Player name" />
-          <input id="hostInput" class="input" type="text" placeholder="Start a round to guess" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="send" disabled />
-          <button id="hostGuessBtn" class="btn btn-outline" type="button" disabled>Guess</button>
-        </div>
-      </div>
-    </div>
-  </nav>
 
   <!-- ===== MAIN GAME AREA ===== -->
   <main id="game">
@@ -195,6 +101,109 @@
 
   </main>
 
+</div>
+
+<!-- ===== SETTINGS — bottom sheet, opened from the gear icon ===== -->
+<div id="settingsSheet" class="sheet-backdrop hidden">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="settingsSheetTitle">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <h2 id="settingsSheetTitle">Settings</h2>
+      <button id="settingsCloseBtn" class="sheet-close" type="button" aria-label="Close settings">✕</button>
+    </div>
+    <div class="sheet-body" data-mode="live" id="settingsSheetBody">
+
+      <div class="seg" role="tablist" aria-label="Game mode">
+        <button id="tab-live" class="seg-btn" type="button" role="tab" data-mode="live" aria-selected="true" aria-controls="pane-live">Live</button>
+        <button id="tab-test" class="seg-btn" type="button" role="tab" data-mode="test" aria-selected="false" aria-controls="pane-test" tabindex="-1">Test</button>
+        <button id="tab-offline" class="seg-btn" type="button" role="tab" data-mode="offline" aria-selected="false" aria-controls="pane-offline" tabindex="-1">Offline</button>
+      </div>
+      <p id="modeHint" class="mode-hint"></p>
+
+      <!-- Live -->
+      <div id="pane-live" class="mode-pane" data-pane="live" role="tabpanel" aria-labelledby="tab-live">
+        <div class="fields">
+          <div class="field wide">
+            <label class="label" for="tiktokUsername">TikTok username</label>
+            <div class="inline">
+              <input id="tiktokUsername" class="input" type="text" placeholder="username (without @)" autocomplete="off" autocapitalize="none" spellcheck="false" />
+              <button id="connectBtn" class="btn btn-outline" type="button">Connect</button>
+            </div>
+            <p id="connNote" class="field-note"></p>
+          </div>
+          <div class="field wide">
+            <label class="label" for="lengthSelect">Word length</label>
+            <select id="lengthSelect" class="select">
+              <option value="any">Any (4–12 letters)</option>
+              <option value="short">Short (4–6 letters)</option>
+              <option value="medium">Medium (7–9 letters)</option>
+              <option value="long">Long (10–12 letters)</option>
+            </select>
+          </div>
+          <div class="field wide">
+            <label class="label" for="liveWord">Secret word (optional)</label>
+            <input id="liveWord" class="input" type="text" placeholder="Leave empty for a random word" autocomplete="off" autocapitalize="none" spellcheck="false" />
+            <p class="field-note">Random words are drawn from a dictionary of hundreds of thousands of real English words.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Test -->
+      <div id="pane-test" class="mode-pane hidden" data-pane="test" role="tabpanel" aria-labelledby="tab-test">
+        <div class="fields">
+          <div class="field wide">
+            <label class="label" for="testWord">Secret word</label>
+            <select id="testWord" class="select"><option value="">Random</option></select>
+          </div>
+          <div class="field">
+            <span class="label">Simulated chat</span>
+            <label class="switch">
+              <input id="autoplayToggle" type="checkbox" checked />
+              <span class="track" aria-hidden="true"></span>
+              <span id="autoplayText">On</span>
+            </label>
+          </div>
+          <div class="field">
+            <label class="label" for="speedSelect">Speed</label>
+            <select id="speedSelect" class="select">
+              <option value="slow">Slow</option>
+              <option value="normal">Normal</option>
+              <option value="fast">Fast</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Offline -->
+      <div id="pane-offline" class="mode-pane hidden" data-pane="offline" role="tabpanel" aria-labelledby="tab-offline">
+        <div class="fields">
+          <div class="field wide">
+            <label class="label" for="offlineWord">Secret word</label>
+            <select id="offlineWord" class="select"><option value="">Random</option></select>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ===== HOST WORD ENTRY — bottom sheet, opened from the keyboard icon ===== -->
+<div id="hostSheet" class="sheet-backdrop hidden">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="hostSheetTitle">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <h2 id="hostSheetTitle">Enter a word</h2>
+      <button id="hostCloseBtn" class="sheet-close" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="dock-form">
+        <input id="playerName" class="input input-name hidden" type="text" placeholder="Player" maxlength="24" autocomplete="off" aria-label="Player name" />
+        <input id="hostInput" class="input" type="text" placeholder="Start a round to guess" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="send" disabled />
+        <button id="hostGuessBtn" class="btn btn-outline" type="button" disabled>Guess</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Floating "+N points" popups, one per scoring guess -->

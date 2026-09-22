@@ -80,15 +80,17 @@
 
   // Action bar
   const settingsToggle = el('settingsToggle');
-  const settingsBody = el('settingsBody');
-  const settingsSummary = el('settingsSummary');
+  const settingsSheet = el('settingsSheet');
+  const settingsCloseBtn = el('settingsCloseBtn');
+  const modePip = el('modePip');
   const hintBtn = el('hintBtn');
   const dockToggle = el('dockToggle');
-  const dockBody = el('dockBody');
+  const hostSheet = el('hostSheet');
+  const hostCloseBtn = el('hostCloseBtn');
   const roundBtn = el('roundBtn');
 
   // Settings
-  const settingsEl = el('settings');
+  const settingsEl = el('settingsSheetBody');
   const modeHint = el('modeHint');
   const segBtns = $$('.seg-btn');
   const panes = $$('.mode-pane');
@@ -171,28 +173,50 @@
     setTimeout(() => t.remove(), 5000);
   }
 
-  // Collapsible sections (settings, host entry). `inert` keeps hidden
-  // controls out of the tab order and away from screen readers.
-  function setOpen(root, toggleBtn, open) {
-    root.dataset.open = String(open);
-    toggleBtn.setAttribute('aria-expanded', String(open));
-    const inner = root.querySelector('.collapse-inner');
-    if (inner) inner.inert = !open;
+  // Bottom sheets (Settings, Enter-a-word). Each opens on demand and
+  // closes itself — nothing sits permanently expanded in the layout,
+  // which is what keeps the game screen clean on a small phone.
+  function openSheet(sheet, toggleBtn) {
+    sheet.classList.remove('hidden');
+    // Force a reflow so the transform transition actually plays instead
+    // of jumping straight to the open state.
+    void sheet.offsetHeight;
+    sheet.classList.add('open');
+    toggleBtn.setAttribute('aria-expanded', 'true');
   }
-  function isOpen(root) { return root.dataset.open === 'true'; }
+  function closeSheet(sheet, toggleBtn) {
+    if (sheet.classList.contains('hidden')) return;
+    sheet.classList.remove('open');
+    toggleBtn.setAttribute('aria-expanded', 'false');
+    setTimeout(() => sheet.classList.add('hidden'), 240);
+  }
+  function isSheetOpen(sheet) { return sheet.classList.contains('open'); }
 
-  // Opening one of the two panels folds the other away, so the action
-  // bar never has two long panels open (and fighting for space) at once.
+  // Opening one sheet closes the other, so only one ever fights for
+  // the screen at a time.
   settingsToggle.addEventListener('click', () => {
-    const opening = !isOpen(settingsBody);
-    setOpen(settingsBody, settingsToggle, opening);
-    if (opening) setOpen(dockBody, dockToggle, false);
+    if (isSheetOpen(settingsSheet)) { closeSheet(settingsSheet, settingsToggle); return; }
+    closeSheet(hostSheet, dockToggle);
+    openSheet(settingsSheet, settingsToggle);
   });
+  settingsCloseBtn.addEventListener('click', () => closeSheet(settingsSheet, settingsToggle));
+  settingsSheet.addEventListener('click', (e) => { if (e.target === settingsSheet) closeSheet(settingsSheet, settingsToggle); });
+
   dockToggle.addEventListener('click', () => {
-    const opening = !isOpen(dockBody);
-    setOpen(dockBody, dockToggle, opening);
-    if (opening) setOpen(settingsBody, settingsToggle, false);
+    if (isSheetOpen(hostSheet)) { closeSheet(hostSheet, dockToggle); return; }
+    closeSheet(settingsSheet, settingsToggle);
+    openSheet(hostSheet, dockToggle);
+    setTimeout(() => { if (!hostInput.disabled) hostInput.focus(); }, 260);
   });
+  hostCloseBtn.addEventListener('click', () => closeSheet(hostSheet, dockToggle));
+  hostSheet.addEventListener('click', (e) => { if (e.target === hostSheet) closeSheet(hostSheet, dockToggle); });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (isSheetOpen(settingsSheet)) closeSheet(settingsSheet, settingsToggle);
+    if (isSheetOpen(hostSheet)) closeSheet(hostSheet, dockToggle);
+  });
+
   diagBtn.addEventListener('click', () => {
     const nowHidden = diagPanel.classList.toggle('hidden');
     diagBtn.setAttribute('aria-expanded', String(!nowHidden));
@@ -303,16 +327,20 @@
     });
   });
 
+  // A small colored dot on the Settings icon is the only always-visible
+  // trace of the current mode — enough to glance at, never enough to
+  // clutter the action bar.
   function updateSummary() {
-    const parts = [MODE_META[settings.mode].label];
+    modePip.className = 'mode-pip mode-' + settings.mode;
+    let title = MODE_META[settings.mode].label;
     if (settings.mode === 'live') {
-      parts.push(conn.status === 'connected' ? '@' + (conn.username || settings.username) : 'Not connected');
+      title += conn.status === 'connected' ? ' · @' + (conn.username || settings.username) : ' · Not connected';
     } else if (settings.mode === 'test') {
-      parts.push(settings.autoplay ? 'Simulated chat' : 'Manual guesses');
+      title += settings.autoplay ? ' · Simulated chat' : ' · Manual guesses';
     } else {
-      parts.push('Manual guesses');
+      title += ' · Manual guesses';
     }
-    settingsSummary.innerHTML = parts.map((p) => `<span>${escapeHtml(p)}</span>`).join(' · ');
+    settingsToggle.title = 'Settings (' + title + ')';
   }
 
   tiktokUsername.addEventListener('input', () => {
@@ -785,9 +813,9 @@
     showResult(null);
     setStats(0, 0);
     statsRow.classList.remove('hidden');
-    // Fold both panels away once the round is live, so the board gets the space.
-    setOpen(settingsBody, settingsToggle, false);
-    setOpen(dockBody, dockToggle, false);
+    // Close both sheets once the round is live, so the board gets the space.
+    closeSheet(settingsSheet, settingsToggle);
+    closeSheet(hostSheet, dockToggle);
     updateRoundButton();
     updateHintButton();
   }
@@ -877,6 +905,6 @@
   selectMode(settings.mode);
   updateRoundButton();
   updateHintButton();
-  setOpen(settingsBody, settingsToggle, true);
-  setOpen(dockBody, dockToggle, false);
+  // Both sheets start closed — a clean, uncluttered first screen. Tap the
+  // gear icon to open Settings whenever you need to change something.
 })();

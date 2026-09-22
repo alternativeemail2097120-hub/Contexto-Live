@@ -30,10 +30,17 @@
   --radius: 16px;
   --radius-sm: 10px;
   --vh: 1vh;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+html {
+  scroll-padding-top: var(--safe-top);
+}
 html, body {
   margin: 0;
   padding: 0;
@@ -44,6 +51,7 @@ html, body {
   color: var(--text);
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
 }
 body { min-height: calc(var(--vh) * 100); }
 
@@ -64,6 +72,7 @@ button { font-family: inherit; }
   position: sticky;
   top: 0;
   z-index: 30;
+  padding-top: var(--safe-top);
 }
 .top-bar { display: flex; align-items: stretch; }
 .icon-btn {
@@ -144,71 +153,64 @@ button { font-family: inherit; }
 }
 
 /* ============================================================
-   ACTION BAR — every control the host needs lives here, right under
-   the status header. Nothing is pinned to the bottom of the screen.
+   ACTION BAR — compact icon controls, always visible, never
+   pinned to the bottom (a single-hand phone keeps a thumb-reach
+   header, not a cluttered bottom bar). Small footprint by design:
+   this is what keeps the game screen clean and uncluttered.
    ============================================================ */
 .action-bar {
   position: sticky;
-  top: 45px; /* sits right under the status header */
+  top: calc(45px + var(--safe-top));
   z-index: 28;
   display: flex;
   gap: 8px;
   align-items: center;
-  padding: 8px 12px;
+  padding: 8px calc(12px + var(--safe-right)) 8px calc(12px + var(--safe-left));
   background: rgba(8,9,15,.92);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
-  overflow-x: auto;
-  scrollbar-width: none;
 }
-.action-bar::-webkit-scrollbar { display: none; }
-.pill-btn {
+.icon-pill {
+  position: relative;
   flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 9px 13px;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--panel-2);
   color: var(--text);
-  font-size: 13px;
-  font-weight: 700;
   cursor: pointer;
-  white-space: nowrap;
 }
-.pill-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
-.pill-btn:disabled { opacity: .4; cursor: not-allowed; }
-.pill-btn:active:not(:disabled) { transform: scale(.97); }
-.pill-btn[aria-expanded="true"] { border-color: var(--brand-cyan); color: var(--brand-cyan); }
-.pill-icon { font-size: 14px; line-height: 1; }
-.pill-btn .caret { margin-left: 2px; transition: transform .2s; }
-.pill-btn[aria-expanded="true"] .caret { transform: rotate(180deg); }
-.pill-btn .settings-summary {
-  display: none;
-  color: var(--muted);
-  font-weight: 600;
-  font-size: 12px;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.icon-pill:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.icon-pill:disabled { opacity: .35; cursor: not-allowed; }
+.icon-pill:active:not(:disabled) { transform: scale(.94); }
+.icon-pill[aria-expanded="true"] { border-color: var(--brand-cyan); color: var(--brand-cyan); }
+.mode-pip {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  border: 1.5px solid var(--panel-2);
 }
-@media (min-width: 480px) {
-  .pill-btn .settings-summary { display: inline; }
-}
-#hintBtn { position: relative; }
+.mode-pip.mode-live { background: var(--mode-live); }
+.mode-pip.mode-test { background: var(--mode-test); }
+.mode-pip.mode-offline { background: var(--mode-offline); }
 #hintBtn.pulse { animation: hintPulse 1.4s ease-in-out infinite; }
 @keyframes hintPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(255,194,75,.5); }
   50% { box-shadow: 0 0 0 5px rgba(255,194,75,0); }
 }
-.action-bar .btn { flex: 0 0 auto; margin-left: auto; }
+.action-bar .btn { flex: 1 1 auto; min-width: 0; margin-left: auto; text-align: center; }
 
 /* ============================================================
    Main game area
    ============================================================ */
-#game { flex: 1; padding: 16px 16px 24px; max-width: 640px; margin: 0 auto; width: 100%; }
+#game { flex: 1; padding: 16px 16px calc(24px + var(--safe-bottom)); max-width: 640px; margin: 0 auto; width: 100%; }
 
 .hero { text-align: center; padding: 6px 0 16px; }
 .wordmark { font-size: 32px; font-weight: 800; letter-spacing: .3px; }
@@ -281,27 +283,68 @@ button { font-family: inherit; }
 .input:disabled { opacity: .55; }
 .select:disabled { opacity: .5; }
 
-/* Collapsible sections: smooth height without measuring */
-.collapse {
-  display: grid;
-  grid-template-rows: 1fr;
-  transition: grid-template-rows .22s ease;
-}
-.collapse-inner { min-height: 0; overflow: hidden; }
-.collapse[data-open="false"] { grid-template-rows: 0fr; }
-.collapse[data-open="false"] > .collapse-inner { visibility: hidden; transition: visibility 0s .22s; }
-
 /* ============================================================
-   Settings panel (opens from the action bar's Settings pill)
+   BOTTOM SHEETS — Settings and Enter-a-word both live here. Kept
+   out of the normal page flow entirely so the game screen stays
+   clean; each opens on demand from its icon in the action bar and
+   closes itself, the backdrop, a swipe-down-style tap, or Esc.
    ============================================================ */
-.settings {
-  max-width: 640px;
-  margin: 0 auto;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(5,6,10,0);
+  transition: background .22s ease;
 }
-.settings .collapse-inner { padding: 0 16px; }
-.settings .collapse[data-open="true"] .collapse-inner { padding: 12px 16px 16px; }
+.sheet-backdrop.hidden { display: none; }
+.sheet-backdrop.open { background: rgba(5,6,10,.62); }
+.sheet {
+  width: 100%;
+  max-width: 640px;
+  max-height: min(82vh, 640px);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -20px 50px -20px rgba(0,0,0,.8);
+  transform: translateY(100%);
+  transition: transform .24s cubic-bezier(.32,.72,0,1);
+  padding-bottom: calc(18px + var(--safe-bottom));
+}
+.sheet-backdrop.open .sheet { transform: translateY(0); }
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line);
+  margin: 10px auto 2px;
+}
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px 4px;
+}
+.sheet-head h2 { font-size: 16px; font-weight: 800; }
+.sheet-close {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: none;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 15px;
+  cursor: pointer;
+}
+.sheet-close:active { transform: scale(.94); }
+.sheet-close:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.sheet-body { padding: 12px 16px 4px; }
 
 /* Mode switch */
 .seg {
@@ -365,17 +408,6 @@ button { font-family: inherit; }
 .switch input:checked + .track::after { transform: translateX(16px); background: var(--brand-cyan); }
 .switch input:focus-visible + .track { outline: 2px solid var(--gold); outline-offset: 2px; }
 
-/* ============================================================
-   Host word entry (opens from the action bar's "Enter a word" pill)
-   ============================================================ */
-.host-dock {
-  max-width: 640px;
-  margin: 0 auto;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-}
-.host-dock .collapse-inner { padding: 0 16px; }
-.host-dock .collapse[data-open="true"] .collapse-inner { padding: 12px 16px 16px; }
 .dock-form { display: flex; gap: 8px; }
 .input-name { flex: 0 0 34%; }
 
@@ -498,7 +530,7 @@ button { font-family: inherit; }
 
 /* ---------- Toasts ---------- */
 #toastHost {
-  position: fixed; top: 54px; left: 50%; transform: translateX(-50%);
+  position: fixed; top: calc(54px + var(--safe-top)); left: 50%; transform: translateX(-50%);
   z-index: 100; display: flex; flex-direction: column; gap: 8px;
   width: min(92vw, 420px);
 }
@@ -518,8 +550,8 @@ button { font-family: inherit; }
    ============================================================ */
 #pointsPopupHost {
   position: fixed;
-  top: 96px;
-  right: 10px;
+  top: calc(96px + var(--safe-top));
+  right: calc(10px + var(--safe-right));
   z-index: 90;
   display: flex;
   flex-direction: column;
@@ -627,5 +659,4 @@ button { font-family: inherit; }
 @media (max-width: 380px) {
   .wordmark { font-size: 26px; }
   .fields { grid-template-columns: 1fr; }
-  .pill-btn span.settings-summary { display: none; }
 }
