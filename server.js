@@ -382,22 +382,6 @@ function pickWordByRandomLength(lengthKey) {
   return pickRandom(candidates);
 }
 
-// Test/Offline "Random" draws from the SAME whole-dictionary pool Live
-// mode uses (hundreds of thousands of words spanning every topic and
-// genre) rather than the small curated shortlist, so the secret word
-// stays fresh and unpredictable even across hours of continuous play.
-// buildPuzzleFromFallback() can rank a full board for any of these words
-// purely offline, via the lexical-affinity engine above.
-function pickFallbackWordByRandomLength() {
-  if (ENGLISH_WORDS.size > 0) {
-    const word = pickWordByRandomLength('any');
-    if (word) return word;
-  }
-  // Extremely unlikely fallback: dictionary somehow not loaded yet.
-  const keys = Object.keys(FALLBACK_PUZZLES);
-  return pickRandom(keys);
-}
-
 // ------------------------------------------------------------
 // RANKING ENGINE
 //
@@ -411,22 +395,29 @@ function pickFallbackWordByRandomLength() {
 // deterministically (the same word always lands on the same rank within
 // a round, no matter the guess order):
 //
-//   STAGE 1 — SEMANTIC CORE (Live mode, needs internet):
+//   STAGE 1 — SEMANTIC CORE (tried first, in every mode — Live, Test, and
+//   Offline all reach for this before anything else):
 //   Query Datamuse across eleven relation types (meaning, synonyms,
 //   co-occurrence triggers, modifier pairs, hypernyms/hyponyms,
 //   holonyms/meronyms, collocations) and merge them with Reciprocal
 //   Rank Fusion (RRF) — the same multi-source rank-merging technique
 //   search engines use — weighted so the strongest semantic signals
 //   dominate. This is what a single richer embedding model would give
-//   you, approximated from several narrower ones.
+//   you, approximated from several narrower ones. This needs the
+//   server to have internet access (which a hosted deploy always
+//   does) — it's the ONLY stage that actually knows what words mean.
 //
-//   STAGE 2 — LEXICAL-AFFINITY EXTENSION (every mode, offline-capable):
+//   STAGE 2 — LEXICAL-AFFINITY EXTENSION (fallback + gap-filler):
 //   Everything the semantic core doesn't cover gets a deterministic rank
 //   from a bigram-overlap / shared-prefix / length-closeness score
 //   against the target, computed once per round over the full loaded
-//   dictionary and sorted. No network needed, so it's also what powers
-//   Test and Offline mode's full-dictionary vocabulary (see item 6 —
-//   widening the word pool — in buildPuzzleFromFallback below).
+//   dictionary and sorted. This is a purely orthographic (spelling-based)
+//   proxy, not a semantic one — it's what's left of the board once you
+//   run out of real "means like" data, so words on it can be unrelated
+//   in meaning despite a close-looking rank. No network needed, so it's
+//   also what every mode falls back to, in full, if Stage 1 is ever
+//   unreachable — Test and Offline still work with zero internet, just
+//   with noticeably weaker ranking quality in that one edge case.
 // ------------------------------------------------------------
 
 // How many total ranked words a single round guarantees (target + core +
@@ -596,10 +587,13 @@ function extendOrderWithLexicalAffinity(target, coreOrder, coreSet, limit) {
   return coreOrder.concat(extra.map(([w]) => w));
 }
 
-// Test/Offline: prefer the hand-curated word list when one exists (a
-// slightly richer, hand-picked near-neighborhood), then always extend
-// with the same offline lexical-affinity engine so ANY real word — not
-// just the ~15 curated targets — gets a full, deep, deterministic ranking.
+// The fully-offline fallback path (Stage 2 only — no network), used when
+// Datamuse can't be reached. Prefers the hand-curated word list when one
+// exists for this target (a slightly richer, hand-picked near-neighborhood),
+// then always extends with the offline lexical-affinity engine so ANY real
+// word — not just the ~15 curated targets — gets a full, deep, deterministic
+// ranking, even though it's an orthographic approximation rather than a
+// semantic one.
 function buildPuzzleFromFallback(word) {
   const target = normalize(word);
   if (!target) return null;
@@ -621,43 +615,50 @@ async function startGame(mode, opts = {}) {
     const custom = normalize(opts.word || '');
     let puzzle;
 
-    if (mode === 'live') {
-      if (opts.word && custom.length < 3) throw new Error('The secret word needs at least 3 letters.');
-      if (custom) {
-        try {
-          puzzle = await buildPuzzleFromDatamuse(custom);
-        } catch (err) {
-          console.error('[DATAMUSE FAILED]', err);
-          if (!FALLBACK_PUZZLES[custom]) {
-            throw new Error(`Could not build a ranking for "${custom}". Check the spelling, or leave the secret word empty for a random one.`);
-          }
-          broadcast({ type: 'server_error', message: 'Could not reach the word-similarity service, using a backup word instead.' });
-          puzzle = buildPuzzleFromFallback(custom);
+    // Every mode now tries the real semantic-similarity service first —
+    // not just Live. Test and Offline used to always use the small
+    // hand-curated word list plus the bigram-overlap approximation below,
+    // which is a purely orthographic (letter-pattern) proxy, not a
+    // semantic one: it can rank obscure words that merely share letter
+    // sequences with the target (e.g. "bedraggle", "bedrizzle") far above
+    // genuinely related common words ("bed", "room", "furniture"), which
+    // isn't how Contexto ranks anything. Datamuse's "means like" relation
+    // is a real semantic signal, so every mode reaches for it first now;
+    // the offline bigram approximation only kicks in as a last resort if
+    // the service is unreachable, so Test/Offline still always work even
+    // with no network at all — they just won't rank as richly in that
+    // rare case.
+    if (opts.word && custom.length < 3) throw new Error('The secret word needs at least 3 letters.');
+    if (custom) {
+      try {
+        puzzle = await buildPuzzleFromDatamuse(custom);
+      } catch (err) {
+        console.error('[DATAMUSE FAILED]', err);
+        if (!FALLBACK_PUZZLES[custom] && !ENGLISH_WORDS.has(custom)) {
+          throw new Error(`Could not build a ranking for "${custom}". Check the spelling, or leave the secret word empty for a random one.`);
         }
-      } else {
-        // Random word: try a handful of fresh random picks from the full
-        // dictionary before giving up — an obscure pick that Datamuse can't
-        // rank well shouldn't mean settling for the small curated list.
-        const RANDOM_ATTEMPTS = 6;
-        let lastErr = null;
-        for (let attempt = 1; attempt <= RANDOM_ATTEMPTS && !puzzle; attempt++) {
-          const word = pickWordByRandomLength(opts.length);
-          try {
-            puzzle = await buildPuzzleFromDatamuse(word);
-          } catch (err) {
-            lastErr = err;
-          }
-        }
-        if (!puzzle) {
-          console.error('[DATAMUSE FAILED after retries]', lastErr);
-          broadcast({ type: 'server_error', message: 'Could not reach the word-similarity service, using a backup word instead.' });
-          puzzle = buildPuzzleFromFallback(pickRandom(Object.keys(FALLBACK_PUZZLES)));
-        }
+        broadcast({ type: 'server_error', message: 'Could not reach the word-similarity service, using the offline backup ranking instead.' });
+        puzzle = buildPuzzleFromFallback(custom);
       }
     } else {
-      // Test and Offline both use the built-in word list, so they work with no internet.
-      const word = custom && FALLBACK_PUZZLES[custom] ? custom : pickFallbackWordByRandomLength();
-      puzzle = buildPuzzleFromFallback(word);
+      // Random word: try a handful of fresh random picks from the full
+      // dictionary before giving up — an obscure pick that Datamuse can't
+      // rank well shouldn't mean settling for the small curated list.
+      const RANDOM_ATTEMPTS = 6;
+      let lastErr = null;
+      for (let attempt = 1; attempt <= RANDOM_ATTEMPTS && !puzzle; attempt++) {
+        const word = pickWordByRandomLength(mode === 'live' ? opts.length : 'any');
+        try {
+          puzzle = await buildPuzzleFromDatamuse(word);
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      if (!puzzle) {
+        console.error('[DATAMUSE FAILED after retries]', lastErr);
+        broadcast({ type: 'server_error', message: 'Could not reach the word-similarity service, using the offline backup ranking instead.' });
+        puzzle = buildPuzzleFromFallback(pickRandom(Object.keys(FALLBACK_PUZZLES)));
+      }
     }
 
     if (!puzzle) throw new Error('Could not build a puzzle for that word.');

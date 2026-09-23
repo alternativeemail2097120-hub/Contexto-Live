@@ -116,7 +116,7 @@ address at the top of the page, like `https://contexto-live.onrender.com`
    - **Test** — rehearse with fake viewers, no TikTok needed. Pick a secret
      word (or Random), switch **Simulated chat** on or off, and choose its
      **Speed**.
-   - **Offline** — no TikTok and no internet. You type each guess yourself,
+   - **Offline** — no TikTok needed. You type each guess yourself,
      with the player's name, in the **Enter a word** panel. Pick a secret
      word (or Random).
    Your choices are remembered on this phone for next time.
@@ -209,16 +209,21 @@ Tap the bar to expand it and see:
   be too obscure for the ranking service to work with, the game quietly
   tries a few more random words before ever falling back to a small backup
   list — see the point below on the ranking service.
-- Live rounds pull the target word's list of related words from a
-  free word-similarity service (Datamuse), blending two signals —
-  "means like" for core meaning and "triggers" for words strongly
-  associated by everyday usage — the same way a real semantic model
-  covers more of a word's neighborhood than a single lookup would.
-  This needs the server to have internet access, which Render provides
-  automatically. If that service is briefly unreachable, the app
-  automatically falls back to one of its built-in backup words so the
-  round still starts. (If you typed your own secret word and it can't be
-  ranked, you'll get a message instead of a surprise word.)
+- Every mode — Live, Test, and Offline — pulls the target word's list of
+  related words from a free word-similarity service (Datamuse) first,
+  blending eleven relation signals (meaning, synonyms, everyday
+  associations, and more) the same way a real semantic model covers more
+  of a word's neighborhood than a single lookup would. This needs the
+  server to have internet access, which Render provides automatically —
+  including for Test and Offline rounds, since those still run on the
+  same always-online server, just without needing a TikTok connection.
+  If that service is briefly unreachable, the app automatically falls
+  back to its small built-in backup word list and a purely spelling-based
+  ranking so the round still starts — Test and Offline still work with
+  zero internet if it ever comes to that, just with noticeably weaker
+  ranking quality in that one edge case. (If you typed your own secret
+  word and it can't be ranked either way, you'll get a message instead of
+  a surprise word.)
 - Trivial inflections of the target (like "coffees" for "coffee") are
   filtered out of the ranking so they don't hand out a cheap near-exact
   slot right next to the real answer.
@@ -242,13 +247,12 @@ Tap the bar to expand it and see:
   **Latest** line but not in the sorted list.
 - **One row per word.** If several people guess the same word it appears
   once in Live guesses, next to whoever found it first.
-- Test and Offline rounds use a small built-in word list instead of the
-  full dictionary, so they work with **no internet at all** — this is a
-  deliberate trade-off: those two modes need a fully precomputed ranking
-  for every word up front (no Datamuse call), which only exists for the
-  handful of words in `data/fallback-puzzles.json`. Add more entries to
-  that file (secret word → an ordered list of related words) to grow
-  their pool.
+- Test and Offline rounds rank words the same real, semantic way Live
+  rounds do (see above) — they only drop back to the small built-in word
+  list in `data/fallback-puzzles.json` plus a spelling-based
+  approximation on the rare occasion the word-similarity service can't be
+  reached. Add more entries to that file (secret word → an ordered list
+  of related words) to make that offline fallback richer.
 - **Points are small on purpose.** Only the closest ten words score, and
   you earn points only when you are the first person to find a word in a
   round:

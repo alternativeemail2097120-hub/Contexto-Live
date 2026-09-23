@@ -303,7 +303,7 @@
   const MODE_META = {
     live:    { label: 'Live',    hint: 'Reads your TikTok LIVE chat. Needs internet.' },
     test:    { label: 'Test',    hint: 'Rehearse with simulated viewers. No TikTok needed.' },
-    offline: { label: 'Offline', hint: 'No TikTok, no internet. You type each guess yourself.' },
+    offline: { label: 'Offline', hint: 'No TikTok needed. You type each guess yourself.' },
   };
   const STORE_KEY = 'contextoLive.settings.v3';
   const DEFAULTS = {
