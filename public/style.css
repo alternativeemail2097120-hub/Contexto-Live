@@ -435,6 +435,14 @@ button { font-family: inherit; }
 .dock-form { display: flex; gap: 8px; }
 .input-name { flex: 0 0 34%; }
 
+/* Auto next round — always visible in Settings, independent of mode tabs */
+.round-tools {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.round-tools .field-note { margin-top: 6px; }
+
 /* Leaderboard tools (item 7) — manual view + reset, always visible in Settings */
 .leaderboard-tools {
   display: flex;

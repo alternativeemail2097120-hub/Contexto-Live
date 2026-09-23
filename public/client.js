@@ -108,6 +108,8 @@
   const autoplayText = el('autoplayText');
   const speedSelect = el('speedSelect');
   const offlineWord = el('offlineWord');
+  const autoNextToggle = el('autoNextToggle');
+  const autoNextText = el('autoNextText');
 
   // Board
   const latestRow = el('latestRow');
@@ -307,7 +309,7 @@
   const DEFAULTS = {
     mode: 'live', username: '', length: 'any',
     autoplay: true, speed: 'normal', playerName: '',
-    topCollapsed: false,
+    topCollapsed: false, autoNextRound: false,
   };
   function loadSettings() {
     try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; }
@@ -327,6 +329,7 @@
   setSelect(speedSelect, settings.speed);
   autoplayToggle.checked = !!settings.autoplay;
   playerName.value = settings.playerName;
+  autoNextToggle.checked = !!settings.autoNextRound;
 
   // Live state mirrors
   let lastState = null;
@@ -409,6 +412,22 @@
   syncAutoplayUi();
 
   playerName.addEventListener('input', () => { settings.playerName = playerName.value.trim(); saveSettings(); });
+
+  // ============================================================
+  // Auto next round — applies in every mode. When on, a new round
+  // starts itself a few seconds after the current one ends (once the
+  // answer + scorers sequence has had a chance to show), so a host can
+  // let the game run continuously without tapping "New round" each time.
+  // ============================================================
+  function syncAutoNextUi() {
+    autoNextText.textContent = autoNextToggle.checked ? 'On' : 'Off';
+  }
+  autoNextToggle.addEventListener('change', () => {
+    settings.autoNextRound = autoNextToggle.checked;
+    saveSettings();
+    syncAutoNextUi();
+  });
+  syncAutoNextUi();
 
   connectBtn.addEventListener('click', () => {
     if (connActive()) { send({ type: 'disconnect_tiktok' }); return; }
@@ -737,9 +756,30 @@
 
   // ============================================================
   // Floating "+N points" popup — audience avatar, name, word, points.
+  // Only ONE popup is ever in the DOM at a time: a fast run of guesses
+  // used to stack several of these on top of each other, which pushed
+  // the live-guesses board up and down as they appeared/disappeared.
+  // Extra popups now queue up and play one after another instead. If the
+  // queue backs up during a hype moment, only the most recent few are
+  // kept so it can't fall further and further behind real time.
   // ============================================================
+  const POPUP_QUEUE_MAX = 5;
+  const POPUP_VISIBLE_MS = 2700; // matches popIn (.25s) + hold + popOut (.3s) in CSS
+  let popupQueue = [];
+  let popupShowing = false;
+
   function showPointsPopup(entry) {
     if (!entry || entry.isHost || entry.isHint || !(entry.points > 0)) return;
+    popupQueue.push(entry);
+    if (popupQueue.length > POPUP_QUEUE_MAX) popupQueue = popupQueue.slice(-POPUP_QUEUE_MAX);
+    advancePopupQueue();
+  }
+
+  function advancePopupQueue() {
+    if (popupShowing || !popupQueue.length) return;
+    const entry = popupQueue.shift();
+    popupShowing = true;
+
     const card = document.createElement('div');
     card.className = 'points-popup';
     card.innerHTML = `
@@ -751,7 +791,11 @@
       <div class="pp-pts">+${entry.points}</div>
     `;
     pointsPopupHost.appendChild(card);
-    setTimeout(() => card.remove(), 3000);
+    setTimeout(() => {
+      card.remove();
+      popupShowing = false;
+      advancePopupQueue();
+    }, POPUP_VISIBLE_MS);
   }
 
   // ============================================================
@@ -797,7 +841,15 @@
       const top = result.leaderboardTop || (lastState && lastState.leaderboardTop) || [];
       renderLbList(overlayLeaderboardList, top, 'No scores yet this session.');
       leaderboardOverlay.classList.remove('hidden');
-      overlayTimer2 = setTimeout(() => leaderboardOverlay.classList.add('hidden'), 5000);
+      overlayTimer2 = setTimeout(() => {
+        leaderboardOverlay.classList.add('hidden');
+        // Auto next round: fires once the answer/scorers/leaderboard
+        // sequence has finished playing out. Re-checks the live setting
+        // (not a value captured earlier) and skips if a round is already
+        // active or already being started, e.g. because the host started
+        // one by hand while this was waiting.
+        if (settings.autoNextRound && !isActive() && !starting) startRound();
+      }, 5000);
     }, 4200);
   }
 

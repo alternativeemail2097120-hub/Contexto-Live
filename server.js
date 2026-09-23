@@ -401,11 +401,15 @@ function pickFallbackWordByRandomLength() {
 // ------------------------------------------------------------
 // RANKING ENGINE
 //
-// Real Contexto pulls its ranking from a proprietary semantic-similarity
-// model. We approximate that in two stages so every round — Live, Test,
-// or Offline — can rank a professionally-ordered board at least 100,000
-// words deep, deterministically (the same word always lands on the same
-// rank within a round, never depending on guess order):
+// Real Contexto ranks words with a proprietary semantic-similarity model
+// (word embeddings such as word2vec/GloVe): every word in its vocabulary
+// gets a fixed cosine-distance-based rank to the target the moment the
+// puzzle is built, #1 is always the target itself, and a word's rank
+// never changes based on who guesses it or when. We approximate that in
+// two stages so every round — Live, Test, or Offline — can rank the
+// ENTIRE loaded dictionary (hundreds of thousands of words), fully
+// deterministically (the same word always lands on the same rank within
+// a round, no matter the guess order):
 //
 //   STAGE 1 — SEMANTIC CORE (Live mode, needs internet):
 //   Query Datamuse across eleven relation types (meaning, synonyms,
@@ -426,9 +430,27 @@ function pickFallbackWordByRandomLength() {
 // ------------------------------------------------------------
 
 // How many total ranked words a single round guarantees (target + core +
-// extension). Comfortably past the 100,000-rank requirement, with a safety
-// margin, while staying fast to compute once per round start.
-const EXTENDED_RANK_LIMIT = 120000;
+// extension). This covers the ENTIRE loaded dictionary (hundreds of
+// thousands of words) rather than stopping at a fixed count. Real Contexto
+// gives every word in its vocabulary a fixed, deterministic rank the
+// instant the round starts, based purely on distance from the target —
+// never on who guessed what, or when. Capping the extension at a fixed
+// number used to mean that anything past the cutoff (often perfectly
+// reasonable, related words) fell through to resolveRank()'s "extended"
+// fallback below, which — because it only assigns a rank the first time a
+// word happens to be guessed — made ranks order-of-guessing dependent
+// instead of similarity dependent: two hosts guessing the same words in a
+// different order could see different ranks, and two different words that
+// are guessed one after another always come out as adjacent ranks even
+// when they aren't actually similar. Setting no cap here means the
+// lexical-affinity pass below (which already scores the full dictionary
+// every round; see extendOrderWithLexicalAffinity) keeps ALL of that
+// work instead of throwing most of it away, so essentially every real
+// word gets a genuine, stable rank up front. resolveRank()'s fallback
+// still exists as a safety net for the rare case where a word enters the
+// dictionary mid-round (the background download in loadRemoteDictionaries
+// finishing after the round already started).
+const EXTENDED_RANK_LIMIT = Infinity;
 
 // Each Datamuse relation code, and how much it should count for in the
 // fused ranking. "ml" (meaning) and "syn" (synonyms) are the strongest
@@ -554,10 +576,12 @@ function lexicalAffinityScore(target, targetProfile, word) {
 }
 
 // Fills in the rest of the loaded dictionary (skipping whatever's already
-// in coreOrder) up to `limit` total ranked words, so an off-topic-but-real
-// guess always lands on a real, stable, professionally-computed rank
-// instead of a dead end — or worse, a rank that depends on who happened
-// to guess it first.
+// in coreOrder), scoring and sorting every remaining word by lexical
+// affinity to the target, up to `limit` total ranked words (see
+// EXTENDED_RANK_LIMIT above — in practice this means the whole
+// dictionary). So an off-topic-but-real guess always lands on a real,
+// stable, deterministically-computed rank instead of a dead end — or
+// worse, a rank that depends on who happened to guess it first.
 function extendOrderWithLexicalAffinity(target, coreOrder, coreSet, limit) {
   const room = limit - coreOrder.length;
   if (room <= 0 || !ENGLISH_WORDS.size) return coreOrder;
@@ -837,15 +861,30 @@ function currentBestBoardRank() {
   return best;
 }
 
+// The starting point a hint walks backward from. For the very first hint
+// of the round this is always capped at INITIAL_HINT_ANCHOR, no matter how
+// far away the current best guess on the board is — otherwise, if every
+// guess so far happened to be a bad one (e.g. stuck in the tens of
+// thousands), the first hint would anchor to that bad guess and reveal
+// something only marginally better, instead of a genuinely useful
+// hundreds-range word. Once at least one hint has been given, later hints
+// anchor to the actual best rank on the board as before, so each one is
+// still only a small, earned step closer.
+function hintAnchor() {
+  const g = state.game;
+  const bestRank = currentBestBoardRank();
+  const cap = Math.min(INITIAL_HINT_ANCHOR, orderedWords.length);
+  if (g.hintedWords.size === 0) return Math.min(bestRank, cap);
+  return bestRank;
+}
+
 // How much further a hint could still improve on the current best guess.
 // Approximate (doesn't account for already-hinted gaps in between) — it's
 // only used to size the Hint button's remaining count, not to pick ranks.
 function hintsRemaining() {
   const g = state.game;
   if (!g.active || !orderedWords.length) return 0;
-  const bestRank = currentBestBoardRank();
-  const anchor = bestRank === Infinity ? Math.min(INITIAL_HINT_ANCHOR, orderedWords.length) : bestRank;
-  return Math.max(0, anchor - 2);
+  return Math.max(0, hintAnchor() - 2);
 }
 
 // Reveals a word ranked only slightly better than the current best guess
@@ -857,8 +896,7 @@ function giveHint() {
   const g = state.game;
   if (!g.active) { broadcast({ type: 'server_error', message: 'Start a round before asking for a hint.' }); return; }
 
-  const bestRank = currentBestBoardRank();
-  const anchor = bestRank === Infinity ? Math.min(INITIAL_HINT_ANCHOR, orderedWords.length) : bestRank;
+  const anchor = hintAnchor();
 
   for (let r = anchor - 1; r >= 2; r--) {
     const w = orderedWords[r - 1];
