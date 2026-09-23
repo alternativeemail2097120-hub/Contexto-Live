@@ -862,15 +862,15 @@ function currentBestBoardRank() {
   return best;
 }
 
-// The starting point a hint walks backward from. For the very first hint
-// of the round this is always capped at INITIAL_HINT_ANCHOR, no matter how
-// far away the current best guess on the board is — otherwise, if every
-// guess so far happened to be a bad one (e.g. stuck in the tens of
-// thousands), the first hint would anchor to that bad guess and reveal
-// something only marginally better, instead of a genuinely useful
-// hundreds-range word. Once at least one hint has been given, later hints
-// anchor to the actual best rank on the board as before, so each one is
-// still only a small, earned step closer.
+// The upper end of the "between the current best guess and #1" window a
+// hint is drawn from. For the very first hint of the round this is always
+// capped at INITIAL_HINT_ANCHOR, no matter how far away the current best
+// guess on the board is — otherwise, if every guess so far happened to be
+// a bad one (e.g. stuck in the tens of thousands), the first hint would
+// anchor to that bad guess and reveal something only marginally better,
+// instead of a genuinely useful hundreds-range word. Once at least one
+// hint has been given, later hints anchor to the actual best rank on the
+// board, so each one lands roughly halfway between that and the answer.
 function hintAnchor() {
   const g = state.game;
   const bestRank = currentBestBoardRank();
@@ -879,39 +879,62 @@ function hintAnchor() {
   return bestRank;
 }
 
-// How much further a hint could still improve on the current best guess.
-// Approximate (doesn't account for already-hinted gaps in between) — it's
+// How many more hints are realistically left. Since each hint now roughly
+// halves the remaining gap to the answer (see giveHint below), the count
+// simulates that halving down to rank 2 rather than assuming a step of 1.
+// Approximate (doesn't account for already-hinted ranks in between) — it's
 // only used to size the Hint button's remaining count, not to pick ranks.
 function hintsRemaining() {
   const g = state.game;
   if (!g.active || !orderedWords.length) return 0;
-  return Math.max(0, hintAnchor() - 2);
+  let anchor = hintAnchor();
+  let count = 0;
+  while (anchor > 2 && count < 100) {
+    anchor = Math.max(2, Math.round((anchor + 1) / 2));
+    count++;
+  }
+  return count;
 }
 
-// Reveals a word ranked only slightly better than the current best guess
-// on the board — never a big jump straight to rank #2 — by walking
-// backward, rank by rank, from just below the current best until it finds
-// one that hasn't been found or hinted yet. This keeps each hint a small,
-// earned step closer to the answer rather than one hint solving the round.
+// Reveals a word ranked BETWEEN the current best guess on the board and the
+// answer itself (rank 1) — never the answer, and never something that isn't
+// actually closer than what's already been found. Rather than crawling one
+// rank at a time, each hint aims for the midpoint of that gap (e.g. best
+// guess is #250 -> hint lands near #125 -> next hint near #63, and so on),
+// so every hint is a meaningful, evenly-spaced step closer instead of a
+// barely-noticeable nudge. If the exact midpoint rank has already been
+// found or hinted, it searches outward from the midpoint (checking the
+// rank just above and just below alternately) until it finds one that's
+// still available, always staying strictly between 1 and the anchor.
 function giveHint() {
   const g = state.game;
   if (!g.active) { broadcast({ type: 'server_error', message: 'Start a round before asking for a hint.' }); return; }
 
-  const anchor = hintAnchor();
-
-  for (let r = anchor - 1; r >= 2; r--) {
-    const w = orderedWords[r - 1];
-    if (!w || g.board.has(w)) continue; // already found or already hinted
-    const rank = rankMap.get(w);
-    const entry = {
-      user: 'Hint', word: w, rank, isHost: false, isHint: true, isWin: false, ts: Date.now(),
-      isRepeat: false, repeatOf: null, points: 0, total: 0, avatar: null,
-    };
-    g.board.set(w, entry);
-    g.hintedWords.add(w);
-    broadcast({ type: 'hint', entry });
-    pushState();
+  const anchor = hintAnchor(); // current best rank on the board (or the opening cap)
+  if (anchor <= 2) {
+    broadcast({ type: 'server_error', message: 'No better hint available right now — your guesses are already this close!' });
     return;
+  }
+
+  const midpoint = Math.max(2, Math.round((anchor + 1) / 2));
+
+  for (let offset = 0; offset < anchor - 1; offset++) {
+    const candidates = offset === 0 ? [midpoint] : [midpoint - offset, midpoint + offset];
+    for (const r of candidates) {
+      if (r < 2 || r >= anchor) continue; // must stay strictly between #1 and the current best
+      const w = orderedWords[r - 1];
+      if (!w || g.board.has(w)) continue; // already found or already hinted
+      const rank = rankMap.get(w);
+      const entry = {
+        user: 'Hint', word: w, rank, isHost: false, isHint: true, isWin: false, ts: Date.now(),
+        isRepeat: false, repeatOf: null, points: 0, total: 0, avatar: null,
+      };
+      g.board.set(w, entry);
+      g.hintedWords.add(w);
+      broadcast({ type: 'hint', entry });
+      pushState();
+      return;
+    }
   }
   broadcast({ type: 'server_error', message: 'No better hint available right now — your guesses are already this close!' });
 }

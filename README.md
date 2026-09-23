@@ -137,10 +137,13 @@ address at the top of the page, like `https://contexto-live.onrender.com`
    When a round ends — someone finds the word, or you end it — the board
    **stays exactly as it is**, including the #1 exact-answer row, still
    sorted top to bottom. Nothing disappears until you start the next round.
-7. **Hints.** Tap the **💡** icon any time during a round to reveal the
-   single next-best word — the word ranked just above whatever the closest
-   guess found so far. It's unlimited (tap it as many times as you like)
-   and it will **never reveal the #1 answer itself**. A hinted word shows up
+7. **Hints.** Tap the **💡** icon any time during a round to reveal a word
+   ranked **between** the closest guess found so far and the #1 answer —
+   roughly halfway between the two, so each hint is a real, noticeable step
+   closer instead of a barely-different number. (Best guess so far is #250?
+   The hint lands around #125. Tap again and it lands around #63, and so
+   on.) It's unlimited (tap it as many times as you like) and it will
+   **never reveal the #1 answer itself**. A hinted word shows up
    in Live guesses with a dashed gold border and "💡 Hint" in place of a
    name — and if a real viewer later guesses that same word themselves,
    it upgrades to their name and scores normally.
