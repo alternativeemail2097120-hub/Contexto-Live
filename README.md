@@ -1,6 +1,10 @@
 # Contexto LIVE — play a word-guessing game with your TikTok chat
 
 > **What's new in this version**
+> - **Secret words are now always root words (lemmas)** — no plurals, no
+>   verb tenses/conjugations, no "-ing"/"-ed"/"-s" participle endings.
+>   Only common, everyday vocabulary already in its plain dictionary form
+>   can be picked as the answer (e.g. "jump", never "jumping" or "jumps").
 > - **Test mode always finishes on its own** — simulated chat's chance of
 >   landing on the secret word climbs every few seconds, so a Test round
 >   guarantees a winner instead of possibly running a long time.

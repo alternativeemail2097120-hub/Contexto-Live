@@ -13,6 +13,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { WebSocketServer } = require('ws');
+const lemmatizer = require('wink-lemmatizer');
 
 // ------------------------------------------------------------
 // ENGLISH DICTIONARY
@@ -359,6 +360,37 @@ function isGoodLiveTarget(w) {
 }
 
 // ------------------------------------------------------------
+// ROOT-WORD (LEMMA) ONLY — the SECRET word must already be its own base
+// dictionary form: never a plural noun ("cars"), never a conjugated or
+// tensed verb, and never a participle ("jumping", "jumped", "runs").
+// This only restricts what can be picked as the answer — guesses are
+// unaffected and still rank against the full dictionary as before.
+//
+// A simple suffix rule (reject anything ending in "s"/"ed"/"ing") would
+// wrongly reject perfectly good base words like "bus", "glass", "bed",
+// "speed", "ring", or "king". wink-lemmatizer already knows the many
+// English exceptions to those patterns, so it's used here instead of
+// hand-written suffix-stripping: a word is only rejected if lemmatizing
+// it as a noun OR a verb actually changes it (meaning it was inflected).
+// ------------------------------------------------------------
+function isBaseFormWord(w) {
+  try {
+    if (lemmatizer.noun(w) !== w) return false;
+    if (lemmatizer.verb(w) !== w) return false;
+  } catch { /* never let an odd input crash target selection */ }
+  return true;
+}
+
+// Filters a list of candidate words down to base-form-only, but never
+// returns an empty list — if every candidate happens to get filtered out
+// (frequency band still tiny at cold start, etc.) the unfiltered list is
+// used instead so a round can always start.
+function baseFormOnly(words) {
+  const kept = words.filter(isBaseFormWord);
+  return kept.length ? kept : words;
+}
+
+// ------------------------------------------------------------
 // LIVE-MODE SECRET WORD POOL — BALANCED DIFFICULTY, ALWAYS RANDOM
 //
 // Picking the target from the entire loaded dictionary (400k+ words)
@@ -406,6 +438,7 @@ function rebuildBalancedWordPool() {
     // Keep only words we can actually rank against (present in the loaded
     // dictionary) — filters out any stray noise in the frequency source.
     if (ENGLISH_WORDS.size && !ENGLISH_WORDS.has(w)) continue;
+    if (!isBaseFormWord(w)) continue; // root words only — see isBaseFormWord above
     pool.push(w);
   }
   balancedWordPool = pool;
@@ -463,10 +496,11 @@ function pickBalancedTargetWord() {
 
   // Frequency list unavailable (first instant after a cold start, or the
   // download failed with no cached copy) and dictionary not filtered yet:
-  // fall back to the small curated list so a round can still start.
+  // fall back to the small curated list so a round can always start.
   const lo = TARGET_LENGTHS_MIN, hi = TARGET_LENGTHS_MAX;
   let candidates = ALL_LIVE_WORDS.filter((w) => { const l = normalize(w).length; return l >= lo && l <= hi; });
   if (!candidates.length) candidates = ALL_LIVE_WORDS;
+  candidates = baseFormOnly(candidates);
   return pickRandom(candidates);
 }
 
@@ -758,7 +792,7 @@ async function startGame(mode, opts = {}) {
       if (!puzzle) {
         console.error('[DATAMUSE FAILED after retries]', lastErr);
         broadcast({ type: 'server_error', message: 'Could not reach the word-similarity service, using the offline backup ranking instead.' });
-        puzzle = buildPuzzleFromFallback(pickRandom(Object.keys(FALLBACK_PUZZLES)));
+        puzzle = buildPuzzleFromFallback(pickRandom(baseFormOnly(Object.keys(FALLBACK_PUZZLES))));
       }
     }
 
