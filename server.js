@@ -243,6 +243,7 @@ const state = {
     extendedRankMap: new Map(), // word -> rank, for valid English words outside the core semantic list
     nextExtendedRank: null,     // next rank to hand out to such a word
     roundScores: new Map(),     // user -> points earned so far THIS round
+    roundAvatars: new Map(),    // user -> latest known avatar URL, for THIS round's top scorers
     hintedWords: new Set(),     // words already revealed via a hint this round
   },
   leaderboard: {}, // username -> { score, wins, guesses } — all-time session totals, kept on the server
@@ -256,7 +257,7 @@ let testAutoplayTimer = null;
 // Top N all-time leaderboard entries, highest score first.
 function topLeaderboard(n = 20) {
   return Object.entries(state.leaderboard)
-    .map(([user, d]) => ({ user, score: d.score, wins: d.wins }))
+    .map(([user, d]) => ({ user, score: d.score, wins: d.wins, avatar: d.avatar || null }))
     .sort((a, b) => b.score - a.score)
     .slice(0, n);
 }
@@ -748,6 +749,7 @@ async function startGame(mode, opts = {}) {
     g.uniquePlayers = new Set();
     g.extendedRankMap = new Map();
     g.roundScores = new Map();
+    g.roundAvatars = new Map();
     g.hintedWords = new Set();
     // Unrelated-but-real words are always ranked past 1500 (the red zone), even
     // when the built-in list for a word is short — otherwise they'd land in
@@ -787,7 +789,7 @@ function finishRound(winnerUser, opts = {}) {
   g.active = false;
   g.winner = winnerUser;
   const topScorers = Array.from(g.roundScores.entries())
-    .map(([user, points]) => ({ user, points }))
+    .map(([user, points]) => ({ user, points, avatar: g.roundAvatars.get(user) || null }))
     .sort((a, b) => b.points - a.points)
     .slice(0, 10);
   g.result = {
@@ -834,8 +836,9 @@ function pointsForRank(rank) {
   return 0;
 }
 
-function ensureLeaderboardEntry(user) {
-  if (!state.leaderboard[user]) state.leaderboard[user] = { score: 0, wins: 0, guesses: 0 };
+function ensureLeaderboardEntry(user, avatar) {
+  if (!state.leaderboard[user]) state.leaderboard[user] = { score: 0, wins: 0, guesses: 0, avatar: avatar || null };
+  else if (avatar) state.leaderboard[user].avatar = avatar;
   return state.leaderboard[user];
 }
 
@@ -870,8 +873,9 @@ function handleGuess(user, rawText, isHost = false, avatar = null) {
   let points = 0;
   let total = 0;
   if (!isHost) {
-    const lb = ensureLeaderboardEntry(user);
+    const lb = ensureLeaderboardEntry(user, avatar);
     lb.guesses += 1;
+    if (avatar) g.roundAvatars.set(user, avatar);
     if (!prior && rank != null) {
       points = pointsForRank(rank);
       lb.score += points;

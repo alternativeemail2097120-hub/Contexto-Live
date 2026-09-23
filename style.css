@@ -30,10 +30,17 @@
   --radius: 16px;
   --radius-sm: 10px;
   --vh: 1vh;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+html {
+  scroll-padding-top: var(--safe-top);
+}
 html, body {
   margin: 0;
   padding: 0;
@@ -44,6 +51,7 @@ html, body {
   color: var(--text);
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
 }
 body { min-height: calc(var(--vh) * 100); }
 
@@ -64,21 +72,40 @@ button { font-family: inherit; }
   position: sticky;
   top: 0;
   z-index: 30;
+  padding-top: var(--safe-top);
 }
-.diag-toggle {
-  width: 100%;
+/* ============================================================
+   Single-row top bar (item 3): status word + every control,
+   including fullscreen, in one compact, horizontally-scrollable
+   row — nothing wraps to a second line, which is what frees up
+   the extra vertical space for the game itself.
+   ============================================================ */
+.top-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  background: none;
-  border: none;
-  color: var(--muted);
-  font-size: 13px;
-  cursor: pointer;
-  text-align: left;
+  gap: 7px;
+  padding: 8px calc(10px + var(--safe-right)) 8px calc(10px + var(--safe-left));
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
-.diag-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.top-bar::-webkit-scrollbar { display: none; }
+.top-bar > * { flex-shrink: 0; }
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.icon-btn:hover { color: var(--text); }
+.icon-btn[aria-pressed="true"], .icon-btn[aria-expanded="true"] { color: var(--brand-cyan); border-color: var(--brand-cyan); }
+.icon-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
 .dot-idle { background: #5a5f78; }
 .dot-connecting, .dot-retrying { background: var(--gold); animation: pulse 1.2s infinite; }
@@ -86,17 +113,23 @@ button { font-family: inherit; }
 .dot-error { background: var(--brand-pink); }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 
-.mode-badge {
-  font-size: 10px;
+/* One colored word carries the entire status: live / connecting /
+   error / not connected, or the current test/offline mode. */
+.status-word {
+  font-size: 11.5px;
   font-weight: 800;
   letter-spacing: .06em;
-  padding: 2px 8px;
+  padding: 6px 11px;
   border-radius: 999px;
   text-transform: uppercase;
+  white-space: nowrap;
 }
-.mode-badge.mode-live { background: rgba(254,44,85,.18); color: var(--mode-live); border: 1px solid var(--mode-live); }
-.mode-badge.mode-test { background: rgba(37,244,238,.14); color: var(--mode-test); border: 1px solid var(--mode-test); }
-.mode-badge.mode-offline { background: rgba(255,194,75,.14); color: var(--mode-offline); border: 1px solid var(--mode-offline); }
+.status-word.status-idle { background: rgba(90,95,120,.18); color: var(--muted); border: 1px solid var(--line); }
+.status-word.status-live { background: rgba(53,208,127,.16); color: #35d07f; border: 1px solid #35d07f; }
+.status-word.status-connecting { background: rgba(255,194,75,.16); color: var(--gold); border: 1px solid var(--gold); animation: pulse 1.2s infinite; }
+.status-word.status-error { background: rgba(254,44,85,.16); color: var(--brand-pink); border: 1px solid var(--brand-pink); }
+.status-word.status-test { background: rgba(37,244,238,.14); color: var(--mode-test); border: 1px solid var(--mode-test); }
+.status-word.status-offline { background: rgba(255,194,75,.14); color: var(--mode-offline); border: 1px solid var(--mode-offline); }
 
 .viewer-chip {
   font-size: 12px;
@@ -106,14 +139,12 @@ button { font-family: inherit; }
   gap: 3px;
 }
 
-.diag-caret { margin-left: auto; transition: transform .2s; flex-shrink: 0; }
-.diag-toggle[aria-expanded="true"] .diag-caret { transform: rotate(180deg); }
-
 .diag-panel { padding: 4px 14px 14px; font-size: 13px; }
 .diag-row { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; color: var(--muted); }
 .diag-row strong { color: var(--text); font-weight: 600; text-align: right; max-width: 60%; overflow-wrap: anywhere; }
 .raw-samples { margin-top: 6px; color: var(--muted); }
 .raw-samples summary { cursor: pointer; }
+.diag-row strong.warn { color: var(--gold); }
 #diagRaw {
   background: #05060a;
   border: 1px solid var(--line);
@@ -127,9 +158,51 @@ button { font-family: inherit; }
 }
 
 /* ============================================================
+   Icon-pill controls (settings / hint / enter-a-word / leaderboard)
+   and the primary round button — all live inside .top-bar now, one
+   single row alongside the fullscreen button. Small footprint by
+   design: this is what keeps the game screen clean and uncluttered.
+   ============================================================ */
+.icon-pill {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+}
+.icon-pill:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.icon-pill:disabled { opacity: .35; cursor: not-allowed; }
+.icon-pill:active:not(:disabled) { transform: scale(.94); }
+.icon-pill[aria-expanded="true"] { border-color: var(--brand-cyan); color: var(--brand-cyan); }
+.mode-pip {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  border: 1.5px solid var(--panel-2);
+}
+.mode-pip.mode-live { background: var(--mode-live); }
+.mode-pip.mode-test { background: var(--mode-test); }
+.mode-pip.mode-offline { background: var(--mode-offline); }
+#hintBtn.pulse { animation: hintPulse 1.4s ease-in-out infinite; }
+@keyframes hintPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,194,75,.5); }
+  50% { box-shadow: 0 0 0 5px rgba(255,194,75,0); }
+}
+.top-bar .btn { flex: 0 0 auto; min-width: 108px; padding: 8px 14px; margin-left: 4px; text-align: center; }
+
+/* ============================================================
    Main game area
    ============================================================ */
-#game { flex: 1; padding: 20px 16px 24px; max-width: 640px; margin: 0 auto; width: 100%; }
+#game { flex: 1; padding: 16px 16px calc(24px + var(--safe-bottom)); max-width: 640px; margin: 0 auto; width: 100%; }
 
 .hero { text-align: center; padding: 6px 0 16px; }
 .wordmark { font-size: 32px; font-weight: 800; letter-spacing: .3px; }
@@ -160,9 +233,7 @@ button { font-family: inherit; }
   text-transform: uppercase;
   letter-spacing: .04em;
 }
-.diff-chip.diff-easy { background: rgba(74,222,128,.15); color: var(--tier-green); }
-.diff-chip.diff-medium { background: rgba(251,146,60,.15); color: var(--tier-orange); }
-.diff-chip.diff-hard { background: rgba(244,63,94,.15); color: var(--tier-red); }
+.diff-chip.diff-live { background: rgba(254,44,85,.15); color: var(--mode-live); }
 .diff-chip.diff-test { background: rgba(37,244,238,.14); color: var(--mode-test); }
 .diff-chip.diff-offline { background: rgba(255,194,75,.14); color: var(--mode-offline); }
 
@@ -204,64 +275,68 @@ button { font-family: inherit; }
 .input:disabled { opacity: .55; }
 .select:disabled { opacity: .5; }
 
-/* Collapsible sections: smooth height without measuring */
-.collapse {
-  display: grid;
-  grid-template-rows: 1fr;
-  transition: grid-template-rows .22s ease;
-}
-.collapse-inner { min-height: 0; overflow: hidden; }
-.collapse[data-open="false"] { grid-template-rows: 0fr; }
-.collapse[data-open="false"] > .collapse-inner { visibility: hidden; transition: visibility 0s .22s; }
-
-.caret { margin-left: auto; transition: transform .2s; flex-shrink: 0; }
-[aria-expanded="true"] > .caret { transform: rotate(180deg); }
-
 /* ============================================================
-   Settings
+   BOTTOM SHEETS — Settings and Enter-a-word both live here. Kept
+   out of the normal page flow entirely so the game screen stays
+   clean; each opens on demand from its icon in the action bar and
+   closes itself, the backdrop, a swipe-down-style tap, or Esc.
    ============================================================ */
-.settings {
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(5,6,10,0);
+  transition: background .22s ease;
+}
+.sheet-backdrop.hidden { display: none; }
+.sheet-backdrop.open { background: rgba(5,6,10,.62); }
+.sheet {
+  width: 100%;
+  max-width: 640px;
+  max-height: min(82vh, 640px);
+  overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  margin-bottom: 14px;
-  box-shadow: 0 10px 30px -18px rgba(0,0,0,.6);
+  border-bottom: none;
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -20px 50px -20px rgba(0,0,0,.8);
+  transform: translateY(100%);
+  transition: transform .24s cubic-bezier(.32,.72,0,1);
+  padding-bottom: calc(18px + var(--safe-bottom));
 }
-.settings-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 4px; }
-.settings-toggle {
-  flex: 1;
-  min-width: 0;
+.sheet-backdrop.open .sheet { transform: translateY(0); }
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line);
+  margin: 10px auto 2px;
+}
+.sheet-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  background: none;
+  justify-content: space-between;
+  padding: 6px 16px 4px;
+}
+.sheet-head h2 { font-size: 16px; font-weight: 800; }
+.sheet-close {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
   border: none;
-  border-radius: var(--radius-sm);
+  background: var(--panel-2);
   color: var(--muted);
+  font-size: 15px;
   cursor: pointer;
-  text-align: left;
 }
-.settings-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 0; }
-.settings-title { font-family: 'Baloo 2', 'Inter', sans-serif; font-size: 16px; font-weight: 700; color: var(--text); }
-.settings-summary {
-  display: flex;
-  gap: 8px;
-  min-width: 0;
-  font-size: 12.5px;
-  overflow: hidden;
-  white-space: nowrap;
-}
-.settings-summary span { overflow: hidden; text-overflow: ellipsis; }
-.settings-summary span:first-child { flex-shrink: 0; color: var(--text); font-weight: 600; }
-/* The summary is only useful while the panel is folded away. */
-.settings-toggle[aria-expanded="true"] .settings-summary { display: none; }
-.settings[data-mode="live"] .settings-summary span:first-child { color: var(--mode-live); }
-.settings[data-mode="test"] .settings-summary span:first-child { color: var(--mode-test); }
-.settings[data-mode="offline"] .settings-summary span:first-child { color: var(--mode-offline); }
-
-.settings .collapse-inner { padding: 0 14px; }
-.settings .collapse[data-open="true"] .collapse-inner { padding-bottom: 14px; }
+.sheet-close:active { transform: scale(.94); }
+.sheet-close:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.sheet-body { padding: 12px 16px 4px; }
 
 /* Mode switch */
 .seg {
@@ -325,11 +400,85 @@ button { font-family: inherit; }
 .switch input:checked + .track::after { transform: translateX(16px); background: var(--brand-cyan); }
 .switch input:focus-visible + .track { outline: 2px solid var(--gold); outline-offset: 2px; }
 
+.dock-form { display: flex; gap: 8px; }
+.input-name { flex: 0 0 34%; }
+
+/* Auto next round — always visible in Settings, independent of mode tabs */
+.round-tools {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.round-tools .field-note { margin-top: 6px; }
+
+/* Timing controls (item 1) — every floating window's on-screen duration,
+   plus the auto-next-round countdown, each independently adjustable. */
+.timing-tools {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.timing-tools-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--brand-cyan);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.link-btn:active { opacity: .7; }
+.link-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.timing-input-row { display: flex; gap: 6px; }
+.timing-input-row .input { text-align: left; }
+.reset-mini-btn {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+.reset-mini-btn:active { transform: scale(.94); }
+.reset-mini-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.timing-tools .field-note { margin-top: 2px; }
+
+/* Auto-next-round countdown, shown inside the leaderboard floating window */
+.overlay-countdown {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--brand-cyan);
+}
+
+/* Leaderboard tools (item 7) — manual view + reset, always visible in Settings */
+.leaderboard-tools {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.leaderboard-tools .btn { flex: 1; text-align: center; }
+#resetLeaderboardBtn.armed { background: rgba(254,44,85,.18); color: var(--brand-pink); box-shadow: inset 0 0 0 1px var(--brand-pink); }
+
 /* ---------- Win / give-up banners ---------- */
 .win-banner {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(120deg, rgba(255,194,75,.16), rgba(254,44,85,.12));
   border: 1px solid var(--gold);
   border-radius: var(--radius);
   padding: 16px;
@@ -362,11 +511,18 @@ button { font-family: inherit; }
 }
 .give-up-banner strong { color: var(--text); }
 
+.win-banner, .give-up-banner {
+  box-shadow: 0 10px 24px -8px rgba(0,0,0,.7);
+}
+.win-banner {
+  background-color: var(--panel);
+  background-image: linear-gradient(120deg, rgba(255,194,75,.16), rgba(254,44,85,.12));
+}
+
 /* ============================================================
    Latest guess + guess rows
    ============================================================ */
-.latest { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-.latest-label { flex: 0 0 44px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.latest { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; margin-top: 10px; }
 .latest .guess-row { flex: 1; min-width: 0; }
 .guess-row.is-empty { color: var(--muted); font-size: 13px; }
 
@@ -385,7 +541,7 @@ button { font-family: inherit; }
   display: flex;
   flex-direction: column;
   gap: 7px;
-  max-height: max(260px, calc(var(--vh) * 62));
+  max-height: max(320px, calc(var(--vh) * 68));
   overflow-y: auto;
 }
 .guess-list:empty { display: none; }
@@ -410,14 +566,19 @@ button { font-family: inherit; }
 .guess-heat { position: absolute; inset: 0 auto 0 0; z-index: 0; opacity: .28; }
 .guess-row.win { border-color: var(--tier-exact); }
 .guess-row.host { border: 1px dashed var(--brand-cyan); }
+.guess-row.hint { border: 1px dashed var(--gold); }
+.guess-row.repeat { border-color: rgba(255,194,75,.5); }
 .guess-user { font-weight: 700; font-size: 12.5px; z-index: 1; white-space: nowrap; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
+.guess-row.hint .guess-user { color: var(--gold); }
+.guess-row .pp-avatar { width: 22px; height: 22px; font-size: 10px; z-index: 1; }
 .guess-word { flex: 1; min-width: 0; z-index: 1; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
-.repeat-tag {
-  font-size: 10px;
+.guess-note {
+  z-index: 1;
+  font-size: 11px;
   font-weight: 700;
-  color: var(--muted);
-  background: rgba(255,255,255,.06);
-  padding: 1px 6px;
+  color: var(--gold);
+  background: rgba(255,194,75,.14);
+  padding: 2px 8px;
   border-radius: 999px;
   white-space: nowrap;
   flex-shrink: 0;
@@ -431,41 +592,9 @@ button { font-family: inherit; }
 .rank-orange { background: rgba(251,146,60,.16); color: var(--tier-orange); }
 .rank-red { background: rgba(244,63,94,.14); color: var(--tier-red); }
 
-/* ============================================================
-   Host word entry (bottom, collapsible)
-   ============================================================ */
-.host-dock {
-  position: sticky;
-  bottom: 0;
-  z-index: 40;
-  background: rgba(8,9,15,.95);
-  backdrop-filter: blur(8px);
-  border-top: 1px solid var(--line);
-  padding-bottom: env(safe-area-inset-bottom);
-}
-.dock-toggle {
-  width: 100%;
-  max-width: 640px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 14px;
-  background: none;
-  border: none;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  text-align: left;
-}
-.dock-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
-.dock-form { display: flex; gap: 8px; max-width: 640px; margin: 0 auto; padding: 0 12px 10px; }
-.input-name { flex: 0 0 34%; }
-
 /* ---------- Toasts ---------- */
 #toastHost {
-  position: fixed; top: 54px; left: 50%; transform: translateX(-50%);
+  position: fixed; top: calc(54px + var(--safe-top)); left: 50%; transform: translateX(-50%);
   z-index: 100; display: flex; flex-direction: column; gap: 8px;
   width: min(92vw, 420px);
 }
@@ -480,12 +609,137 @@ button { font-family: inherit; }
   animation: rowIn .2s ease-out;
 }
 
+/* ============================================================
+   Floating "+N points" popups — audience avatar, name, word, points.
+   Centered, in normal flow, between the stats row and the latest guess.
+   ============================================================ */
+#pointsPopupHost {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+#pointsPopupHost:empty { display: none; }
+.points-popup {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: min(88vw, 320px);
+  margin: 0 auto 6px;
+  background: var(--panel);
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  padding: 6px 12px 6px 6px;
+  box-shadow: 0 8px 24px -8px rgba(0,0,0,.7);
+  animation: popIn .25s ease-out, popOut .3s ease-in 2.4s forwards;
+}
+@keyframes popIn { from { opacity: 0; transform: translateY(-8px) scale(.94); } to { opacity: 1; transform: none; } }
+@keyframes popOut { to { opacity: 0; transform: translateY(-4px) scale(.94); } }
+.pp-avatar {
+  width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+  object-fit: cover; background: var(--panel-2);
+  display: grid; place-items: center; font-weight: 800; font-size: 13px; color: #fff;
+}
+.pp-text { min-width: 0; flex: 1; }
+.pp-name { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp-word { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp-pts { font-size: 14px; font-weight: 800; color: var(--gold); flex-shrink: 0; }
+
+/* ============================================================
+   Full-screen floating windows: round-end answer + top scorers,
+   then the all-time leaderboard. Auto-advance, no host action needed.
+   ============================================================ */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(5,6,10,.78);
+  backdrop-filter: blur(6px);
+  animation: fadeIn .25s ease-out;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.overlay-card {
+  position: relative;
+  width: min(92vw, 420px);
+  max-height: 82vh;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--gold);
+  border-radius: var(--radius);
+  padding: 26px 22px;
+  text-align: center;
+  box-shadow: 0 20px 60px -12px rgba(0,0,0,.8);
+  animation: overlayIn .3s ease-out;
+}
+.overlay-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: none;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+.overlay-close:active { transform: scale(.94); }
+.overlay-close:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+@keyframes overlayIn { from { opacity: 0; transform: scale(.92) translateY(10px); } to { opacity: 1; transform: none; } }
+.overlay-label { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.overlay-label.small { margin-top: 18px; font-size: 12px; }
+.overlay-answer {
+  font-family: 'Baloo 2', 'Inter', sans-serif;
+  font-size: 40px;
+  font-weight: 800;
+  color: var(--gold);
+  margin: 8px 0 6px;
+  word-break: break-word;
+}
+.overlay-sub { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+.overlay-scorers-wrap { margin-top: 6px; }
+.lb-list { list-style: none; margin: 10px 0 0; padding: 0; text-align: left; }
+.lb-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--panel-2);
+  margin-bottom: 6px;
+}
+.lb-rank { flex: 0 0 26px; font-weight: 800; color: var(--muted); font-size: 15px; text-align: center; }
+.lb-row .pp-avatar { width: 26px; height: 26px; font-size: 11px; flex-shrink: 0; }
+.lb-row.lb-medal-row:nth-child(1) { box-shadow: inset 3px 0 0 #ffd700; }
+.lb-row.lb-medal-row:nth-child(2) { box-shadow: inset 3px 0 0 #c7cbe0; }
+.lb-row.lb-medal-row:nth-child(3) { box-shadow: inset 3px 0 0 #d99a5b; }
+.lb-name { flex: 1; min-width: 0; font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-score { font-weight: 800; color: var(--gold); font-size: 13.5px; flex-shrink: 0; }
+.lb-empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
+}
+
+/* Small phones: keep the guessed WORD readable — names and the
+   "Already guessed" note give up space before the word does. */
+@media (max-width: 440px) {
+  .guess-row { gap: 8px; padding: 9px 9px; }
+  .guess-user { flex: 0 1 auto; min-width: 0; max-width: 64px; }
+  .guess-word { min-width: 56px; }
+  .guess-note { font-size: 10px; padding: 2px 6px; }
+  .overlay-answer { font-size: 32px; }
 }
 
 @media (max-width: 380px) {
   .wordmark { font-size: 26px; }
   .fields { grid-template-columns: 1fr; }
-  .settings-summary span:nth-child(n+3) { display: none; }
 }

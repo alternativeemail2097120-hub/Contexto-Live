@@ -51,17 +51,17 @@
   const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   // Status header / diagnostics
+  const diagnosticsEl = el('diagnostics');
   const diagBtn = el('diagBtn');
   const diagPanel = el('diagPanel');
-  const connDot = el('connDot');
-  const connLabel = el('connLabel');
-  const modeBadge = el('modeBadge');
+  const statusWord = el('statusWord');
   const viewerChip = el('viewerChip');
   const viewerCountEl = el('viewerCount');
   const diagStatus = el('diagStatus');
   const diagCount = el('diagCount');
   const diagLast = el('diagLast');
   const diagRaw = el('diagRaw');
+  const diagDict = el('diagDict');
 
   // Hero + banners
   const heroSub = el('heroSub');
@@ -77,26 +77,39 @@
   const giveUpBanner = el('giveUpBanner');
   const giveUpWord = el('giveUpWord');
 
-  // Settings
-  const settingsEl = el('settings');
+  // Action bar
   const settingsToggle = el('settingsToggle');
-  const settingsBody = el('settingsBody');
-  const settingsSummary = el('settingsSummary');
+  const settingsSheet = el('settingsSheet');
+  const settingsCloseBtn = el('settingsCloseBtn');
+  const modePip = el('modePip');
+  const hintBtn = el('hintBtn');
+  const dockToggle = el('dockToggle');
+  const hostSheet = el('hostSheet');
+  const hostCloseBtn = el('hostCloseBtn');
   const roundBtn = el('roundBtn');
+
+  // Settings
+  const settingsEl = el('settingsSheetBody');
   const modeHint = el('modeHint');
   const segBtns = $$('.seg-btn');
   const panes = $$('.mode-pane');
   const tiktokUsername = el('tiktokUsername');
   const connectBtn = el('connectBtn');
   const connNote = el('connNote');
-  const difficultySelect = el('difficultySelect');
-  const lengthSelect = el('lengthSelect');
   const liveWord = el('liveWord');
   const testWord = el('testWord');
   const autoplayToggle = el('autoplayToggle');
   const autoplayText = el('autoplayText');
   const speedSelect = el('speedSelect');
   const offlineWord = el('offlineWord');
+  const autoNextToggle = el('autoNextToggle');
+  const autoNextText = el('autoNextText');
+  const timingAnswerSeconds = el('timingAnswerSeconds');
+  const timingLeaderboardSeconds = el('timingLeaderboardSeconds');
+  const timingPopupSeconds = el('timingPopupSeconds');
+  const timingAutoNextSeconds = el('timingAutoNextSeconds');
+  const resetAllTimingsBtn = el('resetAllTimingsBtn');
+  const resetMiniBtns = $$('.reset-mini-btn');
 
   // Board
   const latestRow = el('latestRow');
@@ -105,11 +118,24 @@
   const guessCount = el('guessCount');
 
   // Host word entry
-  const dockToggle = el('dockToggle');
-  const dockBody = el('dockBody');
   const playerName = el('playerName');
   const hostInput = el('hostInput');
   const hostGuessBtn = el('hostGuessBtn');
+
+  // Points popups + overlays
+  const pointsPopupHost = el('pointsPopupHost');
+  const roundEndOverlay = el('roundEndOverlay');
+  const overlayAnswerWord = el('overlayAnswerWord');
+  const overlayRoundMeta = el('overlayRoundMeta');
+  const overlayScorersWrap = el('overlayScorersWrap');
+  const overlayScorers = el('overlayScorers');
+  const leaderboardOverlay = el('leaderboardOverlay');
+  const overlayLeaderboardList = el('overlayLeaderboardList');
+  const overlayCountdown = el('overlayCountdown');
+  const leaderboardCloseBtn = el('leaderboardCloseBtn');
+  const viewLeaderboardBtn = el('viewLeaderboardBtn');
+  const leaderboardToggle = el('leaderboardToggle');
+  const resetLeaderboardBtn = el('resetLeaderboardBtn');
 
   // ============================================================
   // Small helpers
@@ -122,6 +148,36 @@
   function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
   function plural(n, one, many) { return `${n} ${n === 1 ? one : many}`; }
 
+  // A stable, pleasant color for a username, used for its fallback avatar.
+  const AVATAR_COLORS = ['#fe2c55', '#25f4ee', '#ffc24b', '#4ade80', '#a78bfa', '#fb923c', '#38bdf8', '#f472b6'];
+  function colorFor(name) {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return AVATAR_COLORS[h % AVATAR_COLORS.length];
+  }
+  function fallbackAvatarHtml(user) {
+    return `<span class="pp-avatar" style="background:${colorFor(user || '?')}">${escapeHtml((user || '?').charAt(0).toUpperCase())}</span>`;
+  }
+  function avatarHtml(user, avatarUrl) {
+    if (!avatarUrl) return fallbackAvatarHtml(user);
+    // If the image fails to load (private/expired CDN URL), swap in the
+    // colored-initial fallback instead of leaving a broken image icon.
+    return `<img class="pp-avatar" src="${escapeHtml(avatarUrl)}" alt="" referrerpolicy="no-referrer" data-fallback-user="${escapeHtml(user || '?')}" />`;
+  }
+  // Delegated on the document (capture phase, since "error" doesn't bubble)
+  // so it covers every avatar everywhere it appears — the points popup,
+  // the live guess list, and both leaderboard/top-scorer floating windows.
+  document.addEventListener('error', (e) => {
+    const img = e.target;
+    if (!img || img.tagName !== 'IMG' || !img.classList.contains('pp-avatar')) return;
+    const span = document.createElement('span');
+    span.className = 'pp-avatar';
+    const user = img.dataset.fallbackUser || '?';
+    span.style.background = colorFor(user);
+    span.textContent = user.charAt(0).toUpperCase();
+    img.replaceWith(span);
+  }, true);
+
   function toast(text) {
     const host = el('toastHost');
     const t = document.createElement('div');
@@ -131,22 +187,90 @@
     setTimeout(() => t.remove(), 5000);
   }
 
-  // Collapsible sections (settings, host entry). `inert` keeps hidden
-  // controls out of the tab order and away from screen readers.
-  function setOpen(root, toggleBtn, open) {
-    root.dataset.open = String(open);
-    toggleBtn.setAttribute('aria-expanded', String(open));
-    const inner = root.querySelector('.collapse-inner');
-    if (inner) inner.inert = !open;
+  // Bottom sheets (Settings, Enter-a-word). Each opens on demand and
+  // closes itself — nothing sits permanently expanded in the layout,
+  // which is what keeps the game screen clean on a small phone.
+  function openSheet(sheet, toggleBtn) {
+    sheet.classList.remove('hidden');
+    // Force a reflow so the transform transition actually plays instead
+    // of jumping straight to the open state.
+    void sheet.offsetHeight;
+    sheet.classList.add('open');
+    toggleBtn.setAttribute('aria-expanded', 'true');
   }
-  function isOpen(root) { return root.dataset.open === 'true'; }
+  function closeSheet(sheet, toggleBtn) {
+    if (sheet.classList.contains('hidden')) return;
+    sheet.classList.remove('open');
+    toggleBtn.setAttribute('aria-expanded', 'false');
+    setTimeout(() => sheet.classList.add('hidden'), 240);
+  }
+  function isSheetOpen(sheet) { return sheet.classList.contains('open'); }
 
-  settingsToggle.addEventListener('click', () => setOpen(settingsBody, settingsToggle, !isOpen(settingsBody)));
-  dockToggle.addEventListener('click', () => setOpen(dockBody, dockToggle, !isOpen(dockBody)));
+  // Opening one sheet closes the other, so only one ever fights for
+  // the screen at a time.
+  settingsToggle.addEventListener('click', () => {
+    if (isSheetOpen(settingsSheet)) { closeSheet(settingsSheet, settingsToggle); return; }
+    closeSheet(hostSheet, dockToggle);
+    openSheet(settingsSheet, settingsToggle);
+  });
+  settingsCloseBtn.addEventListener('click', () => closeSheet(settingsSheet, settingsToggle));
+  settingsSheet.addEventListener('click', (e) => { if (e.target === settingsSheet) closeSheet(settingsSheet, settingsToggle); });
+
+  dockToggle.addEventListener('click', () => {
+    if (isSheetOpen(hostSheet)) { closeSheet(hostSheet, dockToggle); return; }
+    closeSheet(settingsSheet, settingsToggle);
+    openSheet(hostSheet, dockToggle);
+    setTimeout(() => { if (!hostInput.disabled) hostInput.focus(); }, 260);
+  });
+  hostCloseBtn.addEventListener('click', () => closeSheet(hostSheet, dockToggle));
+  hostSheet.addEventListener('click', (e) => { if (e.target === hostSheet) closeSheet(hostSheet, dockToggle); });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (isSheetOpen(settingsSheet)) closeSheet(settingsSheet, settingsToggle);
+    if (isSheetOpen(hostSheet)) closeSheet(hostSheet, dockToggle);
+  });
+
   diagBtn.addEventListener('click', () => {
     const nowHidden = diagPanel.classList.toggle('hidden');
     diagBtn.setAttribute('aria-expanded', String(!nowHidden));
   });
+
+  // ============================================================
+  // Fullscreen. The layout keeps its fixed maximum width and stays
+  // centered, so going fullscreen never stretches the game.
+  // ============================================================
+  const fsBtn = el('fsBtn');
+  const fsIconEnter = el('fsIconEnter');
+  const fsIconExit = el('fsIconExit');
+  const fsRoot = document.documentElement;
+
+  function fsElement() { return document.fullscreenElement || document.webkitFullscreenElement || null; }
+  function fsSupported() { return !!(fsRoot.requestFullscreen || fsRoot.webkitRequestFullscreen); }
+
+  function syncFsButton() {
+    const on = !!fsElement();
+    fsBtn.setAttribute('aria-pressed', String(on));
+    fsBtn.setAttribute('aria-label', on ? 'Exit fullscreen' : 'Enter fullscreen');
+    fsBtn.title = on ? 'Exit fullscreen' : 'Enter fullscreen';
+    fsIconEnter.classList.toggle('hidden', on);
+    fsIconExit.classList.toggle('hidden', !on);
+    setRealVH();
+  }
+  fsBtn.addEventListener('click', async () => {
+    if (!fsSupported()) {
+      toast('Fullscreen isn’t available in this browser. On iPhone, tap Share, then Add to Home Screen, and open the game from your home screen.');
+      return;
+    }
+    try {
+      if (fsElement()) await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else await (fsRoot.requestFullscreen || fsRoot.webkitRequestFullscreen).call(fsRoot);
+    } catch (e) {
+      toast('Could not switch fullscreen mode.');
+    }
+  });
+  document.addEventListener('fullscreenchange', syncFsButton);
+  document.addEventListener('webkitfullscreenchange', syncFsButton);
 
   // ============================================================
   // Settings (remembered between visits on this device)
@@ -154,13 +278,58 @@
   const MODE_META = {
     live:    { label: 'Live',    hint: 'Reads your TikTok LIVE chat. Needs internet.' },
     test:    { label: 'Test',    hint: 'Rehearse with simulated viewers. No TikTok needed.' },
-    offline: { label: 'Offline', hint: 'No TikTok, no internet. You type each guess yourself.' },
+    offline: { label: 'Offline', hint: 'No TikTok needed. You type each guess yourself.' },
   };
-  const STORE_KEY = 'contextoLive.settings.v2';
-  const DEFAULTS = {
-    mode: 'live', username: '', difficulty: 'medium', length: 'any',
+
+  // ============================================================
+  // Single-word status chip (item 3) — the one thing on screen that
+  // tells you, at a glance, whether you're actually live, still
+  // connecting, in test/offline mode, or hit an error. Replaces the
+  // old dot + text + mode-badge trio with one colored word.
+  // ============================================================
+  const STATUS_WORDS = {
+    live_connected:  { text: 'LIVE',        cls: 'status-live' },
+    live_connecting: { text: 'CONNECTING',  cls: 'status-connecting' },
+    live_retrying:   { text: 'CONNECTING',  cls: 'status-connecting' },
+    live_error:      { text: 'ERROR',       cls: 'status-error' },
+    live_idle:       { text: 'NOT LIVE',    cls: 'status-idle' },
+    test:            { text: 'TEST',        cls: 'status-test' },
+    offline:         { text: 'OFFLINE',     cls: 'status-offline' },
+  };
+  function updateStatusWord() {
+    // While a round is actually running, reflect the mode the server is
+    // running it in; otherwise reflect whichever mode is selected in
+    // Settings right now, so switching tabs updates the chip immediately.
+    const mode = (lastState && lastState.game && lastState.game.active) ? lastState.mode : settings.mode;
+    const key = mode === 'live' ? 'live_' + (conn.status || 'idle') : mode;
+    const meta = STATUS_WORDS[key] || STATUS_WORDS.live_idle;
+    statusWord.textContent = meta.text;
+    statusWord.className = 'status-word ' + meta.cls;
+    statusWord.title = conn.message || meta.text;
+  }
+
+  const STORE_KEY = 'contextoLive.settings.v3';
+  // Every floating window's on-screen duration, plus the auto-next-round
+  // countdown, in seconds — each independently adjustable in Settings,
+  // each with its own reset-to-default (and one reset-all). These are the
+  // exact durations the app always used before they became adjustable.
+  const DEFAULT_TIMINGS = {
+    timingAnswerSeconds: 4.2,      // "answer + top scorers" floating window
+    timingLeaderboardSeconds: 5,   // all-time leaderboard window (Auto next round OFF)
+    timingPopupSeconds: 2.7,       // "+N points" floating popup
+    timingAutoNextSeconds: 5,      // visible countdown before auto-starting the next round
+  };
+  const TIMING_LIMITS = {
+    timingAnswerSeconds: [1, 30],
+    timingLeaderboardSeconds: [1, 60],
+    timingPopupSeconds: [0.5, 10],
+    timingAutoNextSeconds: [1, 60],
+  };
+  const DEFAULTS = Object.assign({
+    mode: 'live', username: '',
     autoplay: true, speed: 'normal', playerName: '',
-  };
+    autoNextRound: false,
+  }, DEFAULT_TIMINGS);
   function loadSettings() {
     try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; }
   }
@@ -175,18 +344,58 @@
     if (select.value !== value) select.selectedIndex = 0;
   }
   tiktokUsername.value = settings.username;
-  setSelect(difficultySelect, settings.difficulty);
-  setSelect(lengthSelect, settings.length);
   setSelect(speedSelect, settings.speed);
   autoplayToggle.checked = !!settings.autoplay;
   playerName.value = settings.playerName;
+  autoNextToggle.checked = !!settings.autoNextRound;
+
+  // Timing controls: clamp any out-of-range/garbage value (e.g. from an
+  // older localStorage entry) back into range before it ever reaches an
+  // input or a setTimeout.
+  function clampTiming(id, value) {
+    const [lo, hi] = TIMING_LIMITS[id];
+    const n = Number(value);
+    if (!Number.isFinite(n)) return DEFAULT_TIMINGS[id];
+    return Math.min(hi, Math.max(lo, n));
+  }
+  function syncTimingInputs() {
+    timingAnswerSeconds.value = settings.timingAnswerSeconds;
+    timingLeaderboardSeconds.value = settings.timingLeaderboardSeconds;
+    timingPopupSeconds.value = settings.timingPopupSeconds;
+    timingAutoNextSeconds.value = settings.timingAutoNextSeconds;
+  }
+  Object.keys(DEFAULT_TIMINGS).forEach((id) => { settings[id] = clampTiming(id, settings[id]); });
+  syncTimingInputs();
+
+  const timingInputEls = {
+    timingAnswerSeconds, timingLeaderboardSeconds, timingPopupSeconds, timingAutoNextSeconds,
+  };
+  Object.entries(timingInputEls).forEach(([id, input]) => {
+    input.addEventListener('change', () => {
+      settings[id] = clampTiming(id, input.value);
+      input.value = settings[id];
+      saveSettings();
+    });
+  });
+  resetMiniBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.resetFor;
+      if (!DEFAULT_TIMINGS.hasOwnProperty(id)) return;
+      settings[id] = DEFAULT_TIMINGS[id];
+      syncTimingInputs();
+      saveSettings();
+    });
+  });
+  resetAllTimingsBtn.addEventListener('click', () => {
+    Object.keys(DEFAULT_TIMINGS).forEach((id) => { settings[id] = DEFAULT_TIMINGS[id]; });
+    syncTimingInputs();
+    saveSettings();
+  });
 
   // Live state mirrors
   let lastState = null;
   let conn = { status: 'idle', message: '', username: null };
   let starting = false;   // waiting for the server to build a round
-  let armed = false;      // "End round" needs a second tap
-  let armTimer = null;
 
   function isActive() { return !!(lastState && lastState.game.active); }
   function connActive() { return ['connecting', 'retrying', 'connected'].includes(conn.status); }
@@ -205,6 +414,7 @@
     updateSummary();
     updateDock();
     updateHero();
+    updateStatusWord();
   }
   segBtns.forEach((b, i) => {
     b.addEventListener('click', () => selectMode(b.dataset.mode));
@@ -218,16 +428,20 @@
     });
   });
 
+  // A small colored dot on the Settings icon is the only always-visible
+  // trace of the current mode — enough to glance at, never enough to
+  // clutter the action bar.
   function updateSummary() {
-    const parts = [MODE_META[settings.mode].label];
+    modePip.className = 'mode-pip mode-' + settings.mode;
+    let title = MODE_META[settings.mode].label;
     if (settings.mode === 'live') {
-      parts.push(conn.status === 'connected' ? '@' + (conn.username || settings.username) : 'Not connected');
+      title += conn.status === 'connected' ? ' · @' + (conn.username || settings.username) : ' · Not connected';
     } else if (settings.mode === 'test') {
-      parts.push(settings.autoplay ? 'Simulated chat' : 'Manual guesses');
+      title += settings.autoplay ? ' · Simulated chat' : ' · Manual guesses';
     } else {
-      parts.push('Manual guesses');
+      title += ' · Manual guesses';
     }
-    settingsSummary.innerHTML = parts.map((p) => `<span>${escapeHtml(p)}</span>`).join('');
+    settingsToggle.title = 'Settings (' + title + ')';
   }
 
   tiktokUsername.addEventListener('input', () => {
@@ -235,8 +449,6 @@
     saveSettings();
   });
   tiktokUsername.addEventListener('keydown', (e) => { if (e.key === 'Enter') connectBtn.click(); });
-  difficultySelect.addEventListener('change', () => { settings.difficulty = difficultySelect.value; saveSettings(); updateSummary(); });
-  lengthSelect.addEventListener('change', () => { settings.length = lengthSelect.value; saveSettings(); });
 
   function syncAutoplayUi() {
     autoplayText.textContent = autoplayToggle.checked ? 'On' : 'Off';
@@ -260,6 +472,22 @@
 
   playerName.addEventListener('input', () => { settings.playerName = playerName.value.trim(); saveSettings(); });
 
+  // ============================================================
+  // Auto next round — applies in every mode. When on, a new round
+  // starts itself a few seconds after the current one ends (once the
+  // answer + scorers sequence has had a chance to show), so a host can
+  // let the game run continuously without tapping "New round" each time.
+  // ============================================================
+  function syncAutoNextUi() {
+    autoNextText.textContent = autoNextToggle.checked ? 'On' : 'Off';
+  }
+  autoNextToggle.addEventListener('change', () => {
+    settings.autoNextRound = autoNextToggle.checked;
+    saveSettings();
+    syncAutoNextUi();
+  });
+  syncAutoNextUi();
+
   connectBtn.addEventListener('click', () => {
     if (connActive()) { send({ type: 'disconnect_tiktok' }); return; }
     const name = tiktokUsername.value.trim().replace(/^@/, '');
@@ -282,19 +510,34 @@
   }
 
   // ============================================================
+  // Hint button
+  // ============================================================
+  function updateHintButton() {
+    const active = isActive();
+    const remaining = lastState && lastState.game ? (lastState.game.hintsAvailable || 0) : 0;
+    hintBtn.disabled = !active || remaining <= 0;
+    hintBtn.title = !active
+      ? 'Start a round to use hints'
+      : (remaining > 0 ? `Reveal the next-best word (${remaining} left to reveal)` : 'Every ranked word has already been found');
+  }
+  hintBtn.addEventListener('click', () => {
+    if (hintBtn.disabled) return;
+    send({ type: 'request_hint' });
+  });
+
+  // ============================================================
   // Start / end round (one button, always visible)
   // ============================================================
   function updateRoundButton() {
     const active = isActive();
     const finished = !!(lastState && !lastState.game.active && lastState.game.result);
-    if (!active) armed = false;
     let text;
     if (starting) text = 'Starting…';
-    else if (active) text = armed ? 'Tap again to end' : 'End round';
+    else if (active) text = 'End round';
     else text = finished ? 'New round' : 'Start round';
     roundBtn.textContent = text;
     roundBtn.disabled = starting;
-    roundBtn.className = 'btn ' + (active ? 'btn-ghost' : 'btn-primary') + (armed ? ' armed' : '');
+    roundBtn.className = 'btn ' + (active ? 'btn-ghost' : 'btn-primary');
   }
 
   function startRound() {
@@ -307,7 +550,7 @@
       if (conn.status !== 'connected') {
         toast('Not connected to TikTok yet — chat guesses will only arrive once you connect.');
       }
-      send({ type: 'start_game', mode, difficulty: settings.difficulty, length: settings.length, word: liveWord.value.trim() });
+      send({ type: 'start_game', mode, word: liveWord.value.trim() });
       liveWord.value = ''; // never leave the secret word sitting on screen
     } else if (mode === 'test') {
       send({ type: 'start_game', mode, word: testWord.value, autoplay: settings.autoplay, speed: settings.speed });
@@ -318,15 +561,9 @@
 
   roundBtn.addEventListener('click', () => {
     if (isActive()) {
-      if (!armed) {
-        armed = true;
-        updateRoundButton();
-        clearTimeout(armTimer);
-        armTimer = setTimeout(() => { armed = false; updateRoundButton(); }, 3000);
-        return;
-      }
-      clearTimeout(armTimer);
-      armed = false;
+      // A single tap ends the round right away and reveals the exact
+      // answer (see the "Round ended. The answer was ..." banner) — no
+      // second confirming tap needed.
       send({ type: 'give_up' });
       updateRoundButton();
       return;
@@ -392,19 +629,34 @@
     return Math.max(4, Math.min(100, pct)) + '%';
   }
 
+  // A word somebody already guessed this round (real words only — a repeated
+  // non-word just stays "not a word").
+  function isAlreadyGuessed(entry) { return !!entry.isRepeat && entry.rank != null; }
+
   function rowClass(entry) {
-    return 'guess-row' + (entry.isWin ? ' win' : '') + (entry.isHost ? ' host' : '');
+    return 'guess-row' +
+      (entry.isWin ? ' win' : '') +
+      (entry.isHost ? ' host' : '') +
+      (entry.isHint ? ' hint' : '') +
+      (isAlreadyGuessed(entry) ? ' repeat' : '');
   }
   function rowHtml(entry) {
-    const pts = entry.points > 0 ? `<span class="guess-pts" title="Points earned">+${entry.points}</span>` : '';
-    const repeat = entry.isRepeat
-      ? `<span class="repeat-tag" title="Already found by ${escapeHtml(entry.repeatOf)}">↺ ${escapeHtml(entry.repeatOf)}</span>`
-      : '';
+    let note = '';
+    if (isAlreadyGuessed(entry)) {
+      note = `<span class="guess-note" title="First guessed by ${escapeHtml(entry.repeatOf)}">Already guessed</span>`;
+    } else if (entry.points > 0) {
+      note = `<span class="guess-pts" title="Points earned">+${entry.points}</span>`;
+    } else if (entry.isHint) {
+      note = `<span class="guess-note" title="Revealed with a hint">Hint</span>`;
+    }
+    const displayUser = entry.isHint ? '💡 Hint' : entry.user;
+    const showAvatar = !entry.isHint && !entry.isHost && !entry.isReveal;
     return `
       <div class="guess-heat" style="width:${heatWidth(entry.rank)};background:${tierColor(entry.rank)}"></div>
-      <span class="guess-user">${escapeHtml(entry.user)}</span>
-      <span class="guess-word">${escapeHtml(entry.word)}${repeat}</span>
-      ${pts}
+      ${showAvatar ? avatarHtml(entry.user, entry.avatar) : ''}
+      <span class="guess-user">${escapeHtml(displayUser)}</span>
+      <span class="guess-word">${escapeHtml(entry.word)}</span>
+      ${note}
       <span class="guess-rank ${tierClass(entry.rank)}">${rankLabel(entry.rank)}</span>
     `;
   }
@@ -437,10 +689,10 @@
   function upsertBoard(entry) {
     if (entry.rank == null) return; // non-words only show in the "Latest" line
     const existing = board.get(entry.word);
-    if (!existing || (existing.isHost && !entry.isHost)) board.set(entry.word, entry);
+    if (!existing || ((existing.isHost || existing.isHint) && !entry.isHost)) board.set(entry.word, entry);
   }
 
-  function entrySig(e) { return [e.user, e.rank, e.points, e.isHost, e.isWin].join('|'); }
+  function entrySig(e) { return [e.user, e.rank, e.points, e.isHost, e.isHint, e.isWin].join('|'); }
 
   function scheduleBoardRender() {
     if (renderQueued) return;
@@ -448,6 +700,8 @@
     requestAnimationFrame(() => { renderQueued = false; renderBoard(); });
   }
 
+  // Always re-sorts closest-first, top to bottom, every time it runs —
+  // this is what keeps the board continuously ranked as guesses arrive.
   function renderBoard() {
     const entries = Array.from(board.values()).sort((a, b) => a.rank - b.rank).slice(0, MAX_ROWS);
     const keep = new Set(entries.map((e) => e.word));
@@ -470,7 +724,7 @@
         row.addEventListener('animationend', () => row.classList.remove('is-new'), { once: true });
         rowEls.set(entry.word, row);
       } else if (row._sig !== entrySig(entry)) {
-        // Same word, different finder (e.g. a viewer replaced a host test entry).
+        // Same word, different finder (e.g. a viewer replaced a host/hint entry).
         row.className = rowClass(entry);
         row.innerHTML = rowHtml(entry);
       }
@@ -503,20 +757,17 @@
   }
 
   function setDiffChip(state) {
-    const g = state.game;
-    if (!(g.active || g.result) || !state.mode) { statDiff.classList.add('hidden'); return; }
-    let text, cls;
-    if (state.mode === 'live') { text = g.difficulty || 'live'; cls = 'diff-' + (g.difficulty || 'medium'); }
-    else { text = MODE_META[state.mode].label; cls = 'diff-' + state.mode; }
-    statDiff.textContent = text;
-    statDiff.className = 'diff-chip ' + cls;
+    if (!(state.game.active || state.game.result) || !state.mode) { statDiff.classList.add('hidden'); return; }
+    statDiff.textContent = MODE_META[state.mode].label;
+    statDiff.className = 'diff-chip diff-' + state.mode;
+    statDiff.classList.remove('hidden');
   }
 
   function updateHero() {
     const st = lastState;
     let text = 'Pick a mode, adjust the settings, then start a round.';
     if (st && st.game.active) {
-      if (st.mode === 'live') text = 'Round live. Guesses from TikTok chat appear below.';
+      if (st.mode === 'live') text = '';
       else if (st.mode === 'test') text = st.autoplay && st.autoplay.running
         ? 'Test round. Simulated viewers are guessing.'
         : 'Test round. Type a guess below.';
@@ -558,6 +809,196 @@
   }
 
   // ============================================================
+  // Floating "+N points" popup — audience avatar, name, word, points.
+  // Only ONE popup is ever in the DOM at a time: a fast run of guesses
+  // used to stack several of these on top of each other, which pushed
+  // the live-guesses board up and down as they appeared/disappeared.
+  // Extra popups now queue up and play one after another instead. If the
+  // queue backs up during a hype moment, only the most recent few are
+  // kept so it can't fall further and further behind real time.
+  // ============================================================
+  const POPUP_QUEUE_MAX = 5;
+  let popupQueue = [];
+  let popupShowing = false;
+
+  function showPointsPopup(entry) {
+    if (!entry || entry.isHost || entry.isHint || !(entry.points > 0)) return;
+    popupQueue.push(entry);
+    if (popupQueue.length > POPUP_QUEUE_MAX) popupQueue = popupQueue.slice(-POPUP_QUEUE_MAX);
+    advancePopupQueue();
+  }
+
+  function advancePopupQueue() {
+    if (popupShowing || !popupQueue.length) return;
+    const entry = popupQueue.shift();
+    popupShowing = true;
+
+    const card = document.createElement('div');
+    card.className = 'points-popup';
+    card.innerHTML = `
+      ${avatarHtml(entry.user, entry.avatar)}
+      <div class="pp-text">
+        <div class="pp-name">${escapeHtml(entry.user)}</div>
+        <div class="pp-word">guessed “${escapeHtml(entry.word)}”</div>
+      </div>
+      <div class="pp-pts">+${entry.points}</div>
+    `;
+    pointsPopupHost.appendChild(card);
+    setTimeout(() => {
+      card.remove();
+      popupShowing = false;
+      advancePopupQueue();
+    }, Math.max(500, Number(settings.timingPopupSeconds) * 1000 || 2700));
+  }
+
+  // ============================================================
+  // Round-end floating sequence: answer + this round's top scorers,
+  // then (auto-advancing, no tap needed) the all-time leaderboard.
+  // ============================================================
+  let overlayTimer1 = null;         // "answer + top scorers" window duration
+  let leaderboardCloseTimer = null; // leaderboard window duration (Auto next round OFF)
+  let overlayCountdownInterval = null; // ticking "Next round starts in Ns" (Auto next round ON)
+
+  function renderLbList(container, rows, emptyText) {
+    if (!rows || !rows.length) {
+      container.innerHTML = `<li class="lb-empty">${escapeHtml(emptyText)}</li>`;
+      return;
+    }
+    const MEDALS = ['🥇', '🥈', '🥉'];
+    container.innerHTML = rows.map((r, i) => `
+      <li class="lb-row${i < 3 ? ' lb-medal-row' : ''}">
+        <span class="lb-rank">${MEDALS[i] || (i + 1)}</span>
+        ${avatarHtml(r.user, r.avatar)}
+        <span class="lb-name">${escapeHtml(r.user)}</span>
+        <span class="lb-score">${r.points != null ? '+' + r.points : r.score}</span>
+      </li>
+    `).join('');
+  }
+
+  // Cancels whatever is currently keeping the leaderboard window up (the
+  // plain timer when Auto next round is off, or the ticking countdown when
+  // it's on) — used before showing it again, and when it's closed by hand.
+  function clearLeaderboardAutoClose() {
+    clearTimeout(leaderboardCloseTimer);
+    leaderboardCloseTimer = null;
+    clearInterval(overlayCountdownInterval);
+    overlayCountdownInterval = null;
+    overlayCountdown.classList.add('hidden');
+  }
+
+  // Visible, ticking countdown shown inside the leaderboard window when
+  // Auto next round is on — re-reads the setting each second so a change
+  // made mid-countdown (or the host starting a round by hand) takes effect
+  // immediately instead of waiting for the next round to pick it up.
+  function startAutoNextCountdown() {
+    let remaining = Math.max(1, Math.round(Number(settings.timingAutoNextSeconds) || 5));
+    const tick = () => {
+      overlayCountdown.classList.remove('hidden');
+      overlayCountdown.textContent = `Next round starts in ${remaining}s…`;
+    };
+    tick();
+    clearInterval(overlayCountdownInterval);
+    overlayCountdownInterval = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0 || !settings.autoNextRound) {
+        clearInterval(overlayCountdownInterval);
+        overlayCountdownInterval = null;
+        leaderboardOverlay.classList.add('hidden');
+        overlayCountdown.classList.add('hidden');
+        if (settings.autoNextRound && !isActive() && !starting) startRound();
+        return;
+      }
+      tick();
+    }, 1000);
+  }
+
+  function runRoundEndSequence(result) {
+    if (!result) return;
+    clearTimeout(overlayTimer1);
+    clearLeaderboardAutoClose();
+    roundEndOverlay.classList.add('hidden');
+    leaderboardOverlay.classList.add('hidden');
+
+    overlayAnswerWord.textContent = (result.word || '').toUpperCase();
+    overlayRoundMeta.textContent = result.gaveUp
+      ? `Round ended after ${plural(result.guesses, 'guess', 'guesses')}.`
+      : `Found by ${result.winner} in ${plural(result.guesses, 'guess', 'guesses')}.`;
+
+    const scorers = result.topScorers || [];
+    overlayScorersWrap.classList.toggle('hidden', scorers.length === 0);
+    if (scorers.length) renderLbList(overlayScorers, scorers, '');
+
+    roundEndOverlay.classList.remove('hidden');
+    const answerMs = Math.max(500, Number(settings.timingAnswerSeconds) * 1000 || 4200);
+    overlayTimer1 = setTimeout(() => {
+      roundEndOverlay.classList.add('hidden');
+      const top = result.leaderboardTop || (lastState && lastState.leaderboardTop) || [];
+      renderLbList(overlayLeaderboardList, top, 'No scores yet this session.');
+      leaderboardOverlay.classList.remove('hidden');
+
+      // Auto next round: shows a live countdown and starts the next round
+      // once it hits zero. Off: the leaderboard just sits for its own
+      // configured duration, no countdown, no auto-start. Both re-check
+      // the live setting rather than a value captured earlier.
+      if (settings.autoNextRound) {
+        startAutoNextCountdown();
+      } else {
+        const lbMs = Math.max(500, Number(settings.timingLeaderboardSeconds) * 1000 || 5000);
+        leaderboardCloseTimer = setTimeout(() => {
+          leaderboardOverlay.classList.add('hidden');
+        }, lbMs);
+      }
+    }, answerMs);
+  }
+
+  // ============================================================
+  // Manual leaderboard controls (item 7) — view any time from Settings or
+  // the top toolbar trophy icon, and reset the all-time session
+  // leaderboard (double-tap to confirm, same pattern as "End round").
+  // ============================================================
+  function closeLeaderboardOverlay() {
+    clearLeaderboardAutoClose();
+    leaderboardOverlay.classList.add('hidden');
+  }
+  function openLeaderboardManually() {
+    // A manual open always takes over from whatever round-end sequence
+    // might be running — it stays open until the host closes it, with no
+    // countdown and no auto-start.
+    clearTimeout(overlayTimer1);
+    clearLeaderboardAutoClose();
+    const top = (lastState && lastState.leaderboardTop) || [];
+    renderLbList(overlayLeaderboardList, top, 'No scores yet this session.');
+    roundEndOverlay.classList.add('hidden');
+    leaderboardOverlay.classList.remove('hidden');
+  }
+  viewLeaderboardBtn.addEventListener('click', openLeaderboardManually);
+  leaderboardToggle.addEventListener('click', openLeaderboardManually);
+  leaderboardCloseBtn.addEventListener('click', closeLeaderboardOverlay);
+  leaderboardOverlay.addEventListener('click', (e) => { if (e.target === leaderboardOverlay) closeLeaderboardOverlay(); });
+
+  let resetArmed = false;
+  let resetArmTimer = null;
+  function disarmReset() {
+    resetArmed = false;
+    resetLeaderboardBtn.textContent = 'Reset leaderboard';
+    resetLeaderboardBtn.classList.remove('armed');
+  }
+  resetLeaderboardBtn.addEventListener('click', () => {
+    if (!resetArmed) {
+      resetArmed = true;
+      resetLeaderboardBtn.textContent = 'Tap again to confirm';
+      resetLeaderboardBtn.classList.add('armed');
+      clearTimeout(resetArmTimer);
+      resetArmTimer = setTimeout(disarmReset, 3000);
+      return;
+    }
+    clearTimeout(resetArmTimer);
+    disarmReset();
+    send({ type: 'reset_leaderboard' });
+    toast('Leaderboard reset.');
+  });
+
+  // ============================================================
   // Server -> client message handling
   // ============================================================
   function handleServerMessage(msg) {
@@ -565,13 +1006,17 @@
       case 'state': renderState(msg.state); break;
       case 'raw_event': renderDiagnostics(msg); break;
       case 'guess': onGuess(msg); break;
+      case 'hint': onHint(msg); break;
       case 'game_started': onGameStarted(); break;
       case 'win':
         showResult({ word: msg.word, winner: msg.user, gaveUp: false, guesses: msg.guessesUsed, points: msg.points, total: msg.total });
         launchConfetti();
+        runRoundEndSequence(msg.result);
         break;
       case 'give_up':
         showResult({ word: msg.word, gaveUp: true });
+        if (msg.entry) { upsertBoard(msg.entry); scheduleBoardRender(); }
+        runRoundEndSequence(msg.result);
         break;
       case 'server_error':
         starting = false;
@@ -586,6 +1031,13 @@
     renderLatest(msg.entry);
     setStats(msg.totalGuesses, msg.players);
     scheduleBoardRender();
+    showPointsPopup(msg.entry);
+  }
+
+  function onHint(msg) {
+    upsertBoard(msg.entry);
+    renderLatest(msg.entry);
+    scheduleBoardRender();
   }
 
   function onGameStarted() {
@@ -596,8 +1048,11 @@
     showResult(null);
     setStats(0, 0);
     statsRow.classList.remove('hidden');
-    setOpen(settingsBody, settingsToggle, false); // get settings out of the way once live
+    // Close both sheets once the round is live, so the board gets the space.
+    closeSheet(settingsSheet, settingsToggle);
+    closeSheet(hostSheet, dockToggle);
     updateRoundButton();
+    updateHintButton();
   }
 
   function renderState(state) {
@@ -606,14 +1061,7 @@
 
     // Header
     diagStatus.textContent = conn.status;
-    connLabel.textContent = conn.message;
-    connDot.className = 'dot dot-' + conn.status;
-    if (state.mode) {
-      modeBadge.textContent = MODE_META[state.mode].label;
-      modeBadge.className = 'mode-badge mode-' + state.mode;
-    } else {
-      modeBadge.classList.add('hidden');
-    }
+    updateStatusWord();
     if (state.viewerCount != null) {
       viewerCountEl.textContent = state.viewerCount;
       viewerChip.classList.remove('hidden');
@@ -624,6 +1072,14 @@
     diagLast.textContent = state.diagnostics.lastReceived
       ? `${state.diagnostics.lastReceived.user}: ${state.diagnostics.lastReceived.text}`
       : '—';
+    if (state.dictionary) {
+      const d = state.dictionary;
+      const n = d.total.toLocaleString('en-US');
+      diagDict.classList.remove('warn');
+      if (d.status === 'loading') diagDict.textContent = `Loading… ${n} so far`;
+      else if (d.total < d.target) { diagDict.textContent = `${n} words (under ${d.target.toLocaleString('en-US')})`; diagDict.classList.add('warn'); }
+      else diagDict.textContent = `${n} words`;
+    }
     if (state.diagnostics.rawSamples && state.diagnostics.rawSamples.length) {
       diagRaw.textContent = state.diagnostics.rawSamples.join('\n\n---\n\n');
     }
@@ -657,6 +1113,7 @@
 
     updateSummary();
     updateRoundButton();
+    updateHintButton();
     updateDock();
     updateHero();
   }
@@ -673,7 +1130,9 @@
   // Initial paint
   // ============================================================
   selectMode(settings.mode);
+  updateStatusWord();
   updateRoundButton();
-  setOpen(settingsBody, settingsToggle, true);
-  setOpen(dockBody, dockToggle, true);
+  updateHintButton();
+  // Both sheets start closed — a clean, uncluttered first screen. Tap the
+  // gear icon to open Settings whenever you need to change something.
 })();
