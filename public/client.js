@@ -335,8 +335,6 @@
   let lastState = null;
   let conn = { status: 'idle', message: '', username: null };
   let starting = false;   // waiting for the server to build a round
-  let armed = false;      // "End round" needs a second tap
-  let armTimer = null;
 
   function isActive() { return !!(lastState && lastState.game.active); }
   function connActive() { return ['connecting', 'retrying', 'connected'].includes(conn.status); }
@@ -472,14 +470,13 @@
   function updateRoundButton() {
     const active = isActive();
     const finished = !!(lastState && !lastState.game.active && lastState.game.result);
-    if (!active) armed = false;
     let text;
     if (starting) text = 'Starting…';
-    else if (active) text = armed ? 'Tap again to end' : 'End round';
+    else if (active) text = 'End round';
     else text = finished ? 'New round' : 'Start round';
     roundBtn.textContent = text;
     roundBtn.disabled = starting;
-    roundBtn.className = 'btn ' + (active ? 'btn-ghost' : 'btn-primary') + (armed ? ' armed' : '');
+    roundBtn.className = 'btn ' + (active ? 'btn-ghost' : 'btn-primary');
   }
 
   function startRound() {
@@ -503,15 +500,9 @@
 
   roundBtn.addEventListener('click', () => {
     if (isActive()) {
-      if (!armed) {
-        armed = true;
-        updateRoundButton();
-        clearTimeout(armTimer);
-        armTimer = setTimeout(() => { armed = false; updateRoundButton(); }, 3000);
-        return;
-      }
-      clearTimeout(armTimer);
-      armed = false;
+      // A single tap ends the round right away and reveals the exact
+      // answer (see the "Round ended. The answer was ..." banner) — no
+      // second confirming tap needed.
       send({ type: 'give_up' });
       updateRoundButton();
       return;

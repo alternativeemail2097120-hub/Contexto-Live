@@ -157,8 +157,8 @@ address at the top of the page, like `https://contexto-live.onrender.com`
    normal width and stays centered, so nothing is stretched. On an iPhone,
    Safari doesn't allow fullscreen for web pages: tap **Share → Add to Home
    Screen** and open the game from your home screen instead.
-10. Tap **End round** (twice, so you can't hit it by accident) to stop
-    early and show everyone the answer. When a round ends, two floating
+10. Tap **End round** to stop early and show everyone the answer right
+    away. When a round ends, two floating
     windows appear automatically, one after the other — no tapping needed:
     - First, a window showing **the answer** in large text, plus a short
       "🏅 Top scorers this round" list (whoever earned the most points

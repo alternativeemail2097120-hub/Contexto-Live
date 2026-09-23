@@ -496,7 +496,16 @@ async function buildSemanticCore(target) {
       fused.set(w, (fused.get(w) || 0) + contribution);
     });
   });
-  if (!anyOk || fused.size < 20) throw new Error('Not enough semantic neighbors found for "' + target + '"');
+  // Require a genuinely rich set of neighbors before accepting this word as
+  // a puzzle target — not just "found something". A word with only a
+  // handful of Datamuse hits (typically an obscure or oddly-formed compound
+  // like "peabrain" or "hotfoot") makes for a target where almost nothing a
+  // normal player would guess is anywhere close, which feels broken rather
+  // than challenging. Real Contexto draws its secret words from a curated
+  // list of common, well-connected words for exactly this reason. 150 is a
+  // practical stand-in for "well-connected enough to be fair" — ordinary
+  // words like "coffee" or "ocean" clear it by a wide margin.
+  if (!anyOk || fused.size < 150) throw new Error('Not enough semantic neighbors found for "' + target + '"');
 
   return Array.from(fused.entries())
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
@@ -641,10 +650,14 @@ async function startGame(mode, opts = {}) {
         puzzle = buildPuzzleFromFallback(custom);
       }
     } else {
-      // Random word: try a handful of fresh random picks from the full
+      // Random word: try several fresh random picks from the full
       // dictionary before giving up — an obscure pick that Datamuse can't
-      // rank well shouldn't mean settling for the small curated list.
-      const RANDOM_ATTEMPTS = 6;
+      // rank well shouldn't mean settling for the small curated list. Raised
+      // from 6 to 15 now that a "good" target requires a much richer
+      // semantic core (see the 150-word floor above), so more attempts are
+      // typically needed to land on a common, well-connected word instead
+      // of an obscure one.
+      const RANDOM_ATTEMPTS = 15;
       let lastErr = null;
       for (let attempt = 1; attempt <= RANDOM_ATTEMPTS && !puzzle; attempt++) {
         const word = pickWordByRandomLength(mode === 'live' ? opts.length : 'any');
