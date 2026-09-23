@@ -1,5 +1,24 @@
 # Contexto LIVE — play a word-guessing game with your TikTok chat
 
+> **What's new in this version**
+> - **Test mode always finishes on its own** — simulated chat's chance of
+>   landing on the secret word climbs every few seconds, so a Test round
+>   guarantees a winner instead of possibly running a long time.
+> - **The "+N points" popup no longer shoves the board around** — its
+>   spot on screen is now reserved, so "Live guesses" stays put.
+> - **Top scorers & the leaderboard show everyone** — no more 10-person
+>   cutoff after a round, and the all-time leaderboard sends its full
+>   list (still shows the top 20 at a glance, scroll for the rest).
+> - **Save & Apply / Save & Apply as Default** — two new buttons at the
+>   bottom of Settings. The first confirms your settings on this device;
+>   the second makes them the ones **every** device starts with — open the
+>   game anywhere and it's already set up the way you like it.
+> - **A visible countdown to the next round** — now shown right on the
+>   round button itself ("New round (5s)"), not just in the leaderboard
+>   popup.
+>
+> See "Step 2" below for how to re-deploy these files.
+
 This is a complete, ready-to-deploy web app. Your audience guesses a secret
 word — always picked fresh at random, from a balanced pool of common-to-
 moderately-challenging English words (never a stopword, never something

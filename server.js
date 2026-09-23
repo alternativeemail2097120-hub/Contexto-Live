@@ -74,6 +74,36 @@ const DICT_DIR = path.join(__dirname, 'data', 'dictionaries');
 const DICT_CACHE_FILE = path.join(os.tmpdir(), 'contexto-english-words.v1.txt');
 const BLOCKLIST_FILE = path.join(__dirname, 'data', 'word-blocklist.txt');
 
+// ------------------------------------------------------------
+// SAVED DEFAULT SETTINGS ("Save & Apply as Default")
+// Lets the host set everything up once (mode, speed, timings, etc.) and
+// have every future visit — this device or any other, even after a
+// redeploy — start from those same settings instead of the hard-coded
+// ones. Saved to a plain JSON file on disk so it survives server
+// restarts; kept out of the data folder's word files so it's easy to
+// spot. Only a known, small set of fields is ever written here (see
+// handleClientMessage's 'save_default_settings' case) — never anything
+// arbitrary a client happens to send.
+// ------------------------------------------------------------
+const DEFAULT_SETTINGS_FILE = path.join(__dirname, 'data', 'default-settings.json');
+function loadDefaultSettings() {
+  try {
+    if (fs.existsSync(DEFAULT_SETTINGS_FILE)) {
+      return JSON.parse(fs.readFileSync(DEFAULT_SETTINGS_FILE, 'utf8'));
+    }
+  } catch (err) {
+    console.warn('[default-settings] could not read saved defaults:', err.message);
+  }
+  return null;
+}
+function saveDefaultSettings(obj) {
+  try {
+    fs.writeFileSync(DEFAULT_SETTINGS_FILE, JSON.stringify(obj, null, 2));
+  } catch (err) {
+    console.warn('[default-settings] could not save defaults (read-only disk?):', err.message);
+  }
+}
+
 // Optional: add your own words to never use as a secret word, one per line.
 try {
   if (fs.existsSync(BLOCKLIST_FILE)) {
@@ -223,7 +253,7 @@ const state = {
   connection: { status: 'idle', message: 'Not connected yet.', username: null },
   mode: null, // mode of the current / last round: 'live' | 'test' | 'offline'
   viewerCount: null,
-  autoplay: { running: false, speed: 'normal' }, // Test mode's simulated chat
+  autoplay: { running: false, speed: 'normal', ticks: 0 }, // Test mode's simulated chat
   diagnostics: {
     rawEventCount: 0,
     lastReceived: null,
@@ -247,15 +277,19 @@ const state = {
     hintedWords: new Set(),     // words already revealed via a hint this round
   },
   leaderboard: {}, // username -> { score, wins, guesses } — all-time session totals, kept on the server
+  defaultSettings: null, // host's saved "always start with these settings" — see SETTINGS DEFAULTS below
 };
+state.defaultSettings = loadDefaultSettings();
 
 const MODES = ['live', 'test', 'offline'];
 let rankMap = new Map();
 let orderedWords = [];
 let testAutoplayTimer = null;
 
-// Top N all-time leaderboard entries, highest score first.
-function topLeaderboard(n = 20) {
+// All-time leaderboard entries, highest score first. No cap by default —
+// the client shows the top 20 at a glance and scrolls for the rest, so the
+// full list (everyone who has ever scored this session) is always sent.
+function topLeaderboard(n = Infinity) {
   return Object.entries(state.leaderboard)
     .map(([user, d]) => ({ user, score: d.score, wins: d.wins, avatar: d.avatar || null }))
     .sort((a, b) => b.score - a.score)
@@ -271,7 +305,8 @@ function getPublicState() {
     diagnostics: state.diagnostics,
     dictionary,
     wordChoices: WORD_CHOICES,
-    leaderboardTop: topLeaderboard(20),
+    leaderboardTop: topLeaderboard(),
+    defaultSettings: state.defaultSettings,
     game: {
       active: state.game.active,
       winner: state.game.winner,
@@ -788,10 +823,11 @@ function finishRound(winnerUser, opts = {}) {
   const g = state.game;
   g.active = false;
   g.winner = winnerUser;
+  // Every player who scored this round — no cap. The floating window
+  // scrolls if the list is long, but nobody who earned points is left off.
   const topScorers = Array.from(g.roundScores.entries())
     .map(([user, points]) => ({ user, points, avatar: g.roundAvatars.get(user) || null }))
-    .sort((a, b) => b.points - a.points)
-    .slice(0, 10);
+    .sort((a, b) => b.points - a.points);
   g.result = {
     word: g.targetWord,
     winner: winnerUser,
@@ -801,7 +837,7 @@ function finishRound(winnerUser, opts = {}) {
     points: opts.points || 0,
     total: opts.total || 0,
     topScorers,
-    leaderboardTop: topLeaderboard(20),
+    leaderboardTop: topLeaderboard(),
   };
 }
 
@@ -1173,15 +1209,28 @@ function simulateChatMessage(username, text) {
   handleGuess(username, text, false);
 }
 
+// "Play until finished": every tick the chance that the bots land on the
+// exact secret word climbs a little higher, on top of the small flat base
+// chance. That means autoplay always converges on a win within a bounded,
+// predictable number of ticks instead of (rarely, but possibly) running for
+// a very long time on bad luck — the round-ending guess is guaranteed to
+// happen, not just likely.
+const AUTOPLAY_BASE_WIN_CHANCE = 0.06;
+const AUTOPLAY_WIN_CHANCE_STEP = 0.015; // added per tick since the round started
+const AUTOPLAY_MAX_TICKS_BEFORE_FORCE = 45; // by this many ticks, the chance is 100%
+
 function autoplayTick() {
   if (!state.game.active) {
     clearInterval(testAutoplayTimer);
     state.autoplay.running = false;
     return;
   }
+  state.autoplay.ticks = (state.autoplay.ticks || 0) + 1;
   // Prefer words nobody has guessed yet so the board keeps filling up.
   const fresh = orderedWords.slice(1, 60).filter((w) => !state.game.allGuessedWords.has(w));
-  const guess = (!fresh.length || Math.random() < 0.06) ? state.game.targetWord : pickRandom(fresh);
+  const winChance = Math.min(1, AUTOPLAY_BASE_WIN_CHANCE + state.autoplay.ticks * AUTOPLAY_WIN_CHANCE_STEP);
+  const forceWin = state.autoplay.ticks >= AUTOPLAY_MAX_TICKS_BEFORE_FORCE;
+  const guess = (!fresh.length || forceWin || Math.random() < winChance) ? state.game.targetWord : pickRandom(fresh);
   simulateChatMessage(pickRandom(FAKE_USERS), guess);
 }
 
@@ -1191,6 +1240,7 @@ function toggleTestAutoplay(on, speed) {
   if (AUTOPLAY_MS[speed]) state.autoplay.speed = speed;
   if (on && state.game.active && state.mode === 'test') {
     state.autoplay.running = true;
+    state.autoplay.ticks = 0; // fresh countdown to a guaranteed win each time it (re)starts
     testAutoplayTimer = setInterval(autoplayTick, AUTOPLAY_MS[state.autoplay.speed]);
   }
   pushState();
@@ -1243,6 +1293,22 @@ function handleClientMessage(msg, ws) {
       state.leaderboard = {};
       pushState();
       break;
+    case 'save_default_settings': {
+      // "Save & Apply as Default" — only ever writes this known, small
+      // whitelist of fields, straight from the Settings panel, never
+      // anything else a message might carry.
+      const s = msg.settings || {};
+      const allowed = [
+        'mode', 'username', 'autoplay', 'speed', 'playerName', 'autoNextRound',
+        'timingAnswerSeconds', 'timingLeaderboardSeconds', 'timingPopupSeconds', 'timingAutoNextSeconds',
+      ];
+      const clean = {};
+      for (const key of allowed) if (Object.prototype.hasOwnProperty.call(s, key)) clean[key] = s[key];
+      state.defaultSettings = clean;
+      saveDefaultSettings(clean);
+      pushState();
+      break;
+    }
     default:
       safeSend(ws, { type: 'server_error', message: 'Unknown action: ' + msg.type });
   }

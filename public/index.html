@@ -16,18 +16,30 @@
 
 <div id="app">
 
-  <!-- ===== TOP: status + diagnostics drawer (collapsible) ===== -->
+  <!-- ===== TOP BAR: status word + every control in one single row ===== -->
   <header id="diagnostics">
     <div class="top-bar">
-      <button id="diagBtn" class="diag-toggle" aria-expanded="false" type="button">
-        <span id="connDot" class="dot dot-idle"></span>
-        <span id="connLabel">Not connected yet</span>
-        <span id="modeBadge" class="mode-badge hidden"></span>
-        <span id="viewerChip" class="viewer-chip hidden">👁 <span id="viewerCount">0</span></span>
-        <span class="diag-caret">▾</span>
+      <span id="statusWord" class="status-word status-idle" title="Current status">IDLE</span>
+      <span id="viewerChip" class="viewer-chip hidden">👁 <span id="viewerCount">0</span></span>
+
+      <button id="settingsToggle" class="icon-pill" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="settingsSheet" title="Settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span id="modePip" class="mode-pip"></span>
       </button>
-      <button id="collapseBtn" class="icon-btn" type="button" aria-expanded="true" aria-label="Hide status bar" title="Hide status bar">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15l-6-6-6 6"/></svg>
+      <button id="hintBtn" class="icon-pill" type="button" disabled title="Reveal the next-best word (never the answer)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.5.4.8 1 .8 1.6v.2h6.4v-.2c0-.6.3-1.2.8-1.6A7 7 0 0 0 12 2Z"/></svg>
+      </button>
+      <button id="dockToggle" class="icon-pill" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="hostSheet" title="Enter a word">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12"/></svg>
+      </button>
+      <button id="leaderboardToggle" class="icon-pill" type="button" title="View leaderboard">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z"/><path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4"/></svg>
+      </button>
+
+      <button id="roundBtn" class="btn btn-primary" type="button">Start round</button>
+
+      <button id="diagBtn" class="icon-btn" type="button" aria-expanded="false" aria-label="Connection details" title="Connection details">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-5M12 8h.01"/></svg>
       </button>
       <button id="fsBtn" class="icon-btn" type="button" aria-pressed="false" aria-label="Enter fullscreen" title="Enter fullscreen">
         <svg id="fsIconEnter" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
@@ -45,28 +57,6 @@
       </details>
     </div>
   </header>
-  <button id="expandTab" class="expand-tab hidden" type="button" aria-label="Show status bar" title="Show status bar">
-    <span id="expandDot" class="dot dot-idle"></span>
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
-  </button>
-
-  <!-- ===== ACTION BAR: compact icon controls + the one button that matters ===== -->
-  <div id="actionBar" class="action-bar">
-    <button id="settingsToggle" class="icon-pill" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="settingsSheet" title="Settings">
-      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      <span id="modePip" class="mode-pip"></span>
-    </button>
-    <button id="hintBtn" class="icon-pill" type="button" disabled title="Reveal the next-best word (never the answer)">
-      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.5.4.8 1 .8 1.6v.2h6.4v-.2c0-.6.3-1.2.8-1.6A7 7 0 0 0 12 2Z"/></svg>
-    </button>
-    <button id="dockToggle" class="icon-pill" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="hostSheet" title="Enter a word">
-      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12"/></svg>
-    </button>
-    <button id="leaderboardToggle" class="icon-pill" type="button" title="View leaderboard">
-      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z"/><path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4"/></svg>
-    </button>
-    <button id="roundBtn" class="btn btn-primary" type="button">Start round</button>
-  </div>
 
   <!-- ===== MAIN GAME AREA ===== -->
   <main id="game">
@@ -159,13 +149,14 @@
             <label class="label" for="testWord">Secret word</label>
             <select id="testWord" class="select"><option value="">Random</option></select>
           </div>
-          <div class="field">
-            <span class="label">Simulated chat</span>
+          <div class="field wide">
+            <span class="label">Simulated chat (bots play until someone wins)</span>
             <label class="switch">
               <input id="autoplayToggle" type="checkbox" checked />
               <span class="track" aria-hidden="true"></span>
               <span id="autoplayText">On</span>
             </label>
+            <p class="field-note">When on, simulated viewers keep guessing on their own, continuously, until the round is won — you never need to keep it going by hand.</p>
           </div>
           <div class="field">
             <label class="label" for="speedSelect">Speed</label>
@@ -247,6 +238,15 @@
       <div class="leaderboard-tools">
         <button id="viewLeaderboardBtn" class="btn btn-outline" type="button">🏆 View leaderboard</button>
         <button id="resetLeaderboardBtn" class="btn btn-ghost" type="button">Reset leaderboard</button>
+      </div>
+
+      <!-- Save & Apply — everything above already saves itself to this
+           device as you change it; these two just confirm it, and (as
+           Default) make it what every device starts with. -->
+      <div class="save-apply-tools">
+        <button id="saveApplyBtn" class="btn btn-outline" type="button">💾 Save &amp; Apply</button>
+        <button id="saveApplyDefaultBtn" class="btn btn-primary" type="button">💾 Save &amp; Apply as Default</button>
+        <p class="field-note">"as Default" makes these settings load automatically every time, on this device or any other.</p>
       </div>
 
     </div>

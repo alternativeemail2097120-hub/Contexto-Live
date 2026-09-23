@@ -54,9 +54,7 @@
   const diagnosticsEl = el('diagnostics');
   const diagBtn = el('diagBtn');
   const diagPanel = el('diagPanel');
-  const connDot = el('connDot');
-  const connLabel = el('connLabel');
-  const modeBadge = el('modeBadge');
+  const statusWord = el('statusWord');
   const viewerChip = el('viewerChip');
   const viewerCountEl = el('viewerCount');
   const diagStatus = el('diagStatus');
@@ -64,9 +62,6 @@
   const diagLast = el('diagLast');
   const diagRaw = el('diagRaw');
   const diagDict = el('diagDict');
-  const collapseBtn = el('collapseBtn');
-  const expandTab = el('expandTab');
-  const expandDot = el('expandDot');
 
   // Hero + banners
   const heroSub = el('heroSub');
@@ -169,7 +164,10 @@
     // colored-initial fallback instead of leaving a broken image icon.
     return `<img class="pp-avatar" src="${escapeHtml(avatarUrl)}" alt="" referrerpolicy="no-referrer" data-fallback-user="${escapeHtml(user || '?')}" />`;
   }
-  pointsPopupHost.addEventListener('error', (e) => {
+  // Delegated on the document (capture phase, since "error" doesn't bubble)
+  // so it covers every avatar everywhere it appears — the points popup,
+  // the live guess list, and both leaderboard/top-scorer floating windows.
+  document.addEventListener('error', (e) => {
     const img = e.target;
     if (!img || img.tagName !== 'IMG' || !img.classList.contains('pp-avatar')) return;
     const span = document.createElement('span');
@@ -239,36 +237,6 @@
   });
 
   // ============================================================
-  // Collapsible top status bar (item 4) — hide it entirely for a
-  // cleaner screen, with a slim pull-tab to bring it back any time.
-  // Remembered between visits, same as the other settings.
-  // ============================================================
-  function syncTopOffset() {
-    if (diagnosticsEl.classList.contains('collapsed')) {
-      document.documentElement.style.setProperty('--topbar-h', expandTab.offsetHeight + 'px');
-    } else {
-      document.documentElement.style.removeProperty('--topbar-h');
-    }
-  }
-  function setTopCollapsed(collapsed) {
-    diagnosticsEl.classList.toggle('collapsed', collapsed);
-    expandTab.classList.toggle('hidden', !collapsed);
-    collapseBtn.setAttribute('aria-expanded', String(!collapsed));
-    requestAnimationFrame(syncTopOffset);
-  }
-  collapseBtn.addEventListener('click', () => {
-    settings.topCollapsed = true;
-    saveSettings();
-    setTopCollapsed(true);
-  });
-  expandTab.addEventListener('click', () => {
-    settings.topCollapsed = false;
-    saveSettings();
-    setTopCollapsed(false);
-  });
-  window.addEventListener('resize', syncTopOffset);
-
-  // ============================================================
   // Fullscreen. The layout keeps its fixed maximum width and stays
   // centered, so going fullscreen never stretches the game.
   // ============================================================
@@ -312,6 +280,34 @@
     test:    { label: 'Test',    hint: 'Rehearse with simulated viewers. No TikTok needed.' },
     offline: { label: 'Offline', hint: 'No TikTok needed. You type each guess yourself.' },
   };
+
+  // ============================================================
+  // Single-word status chip (item 3) — the one thing on screen that
+  // tells you, at a glance, whether you're actually live, still
+  // connecting, in test/offline mode, or hit an error. Replaces the
+  // old dot + text + mode-badge trio with one colored word.
+  // ============================================================
+  const STATUS_WORDS = {
+    live_connected:  { text: 'LIVE',        cls: 'status-live' },
+    live_connecting: { text: 'CONNECTING',  cls: 'status-connecting' },
+    live_retrying:   { text: 'CONNECTING',  cls: 'status-connecting' },
+    live_error:      { text: 'ERROR',       cls: 'status-error' },
+    live_idle:       { text: 'NOT LIVE',    cls: 'status-idle' },
+    test:            { text: 'TEST',        cls: 'status-test' },
+    offline:         { text: 'OFFLINE',     cls: 'status-offline' },
+  };
+  function updateStatusWord() {
+    // While a round is actually running, reflect the mode the server is
+    // running it in; otherwise reflect whichever mode is selected in
+    // Settings right now, so switching tabs updates the chip immediately.
+    const mode = (lastState && lastState.game && lastState.game.active) ? lastState.mode : settings.mode;
+    const key = mode === 'live' ? 'live_' + (conn.status || 'idle') : mode;
+    const meta = STATUS_WORDS[key] || STATUS_WORDS.live_idle;
+    statusWord.textContent = meta.text;
+    statusWord.className = 'status-word ' + meta.cls;
+    statusWord.title = conn.message || meta.text;
+  }
+
   const STORE_KEY = 'contextoLive.settings.v3';
   // Every floating window's on-screen duration, plus the auto-next-round
   // countdown, in seconds — each independently adjustable in Settings,
@@ -332,7 +328,7 @@
   const DEFAULTS = Object.assign({
     mode: 'live', username: '',
     autoplay: true, speed: 'normal', playerName: '',
-    topCollapsed: false, autoNextRound: false,
+    autoNextRound: false,
   }, DEFAULT_TIMINGS);
   function loadSettings() {
     try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; }
@@ -342,6 +338,12 @@
   }
   const settings = Object.assign({}, DEFAULTS, loadSettings());
   if (!MODE_META[settings.mode]) settings.mode = 'live';
+  // True only the very first time this device ever opens the game (nothing
+  // saved locally yet) — that's the one case where the host's saved
+  // "Save & Apply as Default" settings from the server should take over
+  // instead of the hard-coded defaults. See applyServerDefaultSettings().
+  const hadLocalSettingsAtLoad = Object.keys(loadSettings()).length > 0;
+  let appliedServerDefaults = false;
 
   function setSelect(select, value) {
     select.value = value;
@@ -396,6 +398,70 @@
     saveSettings();
   });
 
+  // ============================================================
+  // "Save & Apply" / "Save & Apply as Default"
+  //
+  // Every setting already saves itself to this device the instant you
+  // change it — these two buttons exist so a host who has just finished
+  // tuning everything can confirm it in one tap, and (with "as Default")
+  // make those exact settings what EVERY device starts with from now on,
+  // this one included, without re-adjusting them each time the game loads.
+  // ============================================================
+  const saveApplyBtn = el('saveApplyBtn');
+  const saveApplyDefaultBtn = el('saveApplyDefaultBtn');
+
+  function settingsSnapshot() {
+    return {
+      mode: settings.mode, username: settings.username,
+      autoplay: settings.autoplay, speed: settings.speed,
+      playerName: settings.playerName, autoNextRound: settings.autoNextRound,
+      timingAnswerSeconds: settings.timingAnswerSeconds,
+      timingLeaderboardSeconds: settings.timingLeaderboardSeconds,
+      timingPopupSeconds: settings.timingPopupSeconds,
+      timingAutoNextSeconds: settings.timingAutoNextSeconds,
+    };
+  }
+
+  if (saveApplyBtn) {
+    saveApplyBtn.addEventListener('click', () => {
+      saveSettings();
+      pushAutoplay();
+      toast('Settings saved on this device.');
+    });
+  }
+  if (saveApplyDefaultBtn) {
+    saveApplyDefaultBtn.addEventListener('click', () => {
+      saveSettings();
+      pushAutoplay();
+      appliedServerDefaults = true; // this device just set the default — never overwrite it back
+      send({ type: 'save_default_settings', settings: settingsSnapshot() });
+      toast('Saved as default — every device will start with these settings.');
+    });
+  }
+
+  // Adopts the host's saved default settings (from the server) into this
+  // device's settings, but only the very first time this device ever
+  // loads the game — a device that already has its own saved settings
+  // (even the built-in defaults, once changed) is left alone.
+  function applyServerDefaultSettings(defaults) {
+    if (!defaults || appliedServerDefaults || hadLocalSettingsAtLoad) return;
+    appliedServerDefaults = true;
+    Object.assign(settings, defaults);
+    if (!MODE_META[settings.mode]) settings.mode = 'live';
+    Object.keys(DEFAULT_TIMINGS).forEach((id) => { settings[id] = clampTiming(id, settings[id]); });
+
+    tiktokUsername.value = settings.username || '';
+    setSelect(speedSelect, settings.speed);
+    autoplayToggle.checked = !!settings.autoplay;
+    playerName.value = settings.playerName || '';
+    autoNextToggle.checked = !!settings.autoNextRound;
+    syncTimingInputs();
+    syncAutoplayUi();
+    syncAutoNextUi();
+    selectMode(settings.mode);
+    saveSettings();
+  }
+
   // Live state mirrors
   let lastState = null;
   let conn = { status: 'idle', message: '', username: null };
@@ -418,6 +484,7 @@
     updateSummary();
     updateDock();
     updateHero();
+    updateStatusWord();
   }
   segBtns.forEach((b, i) => {
     b.addEventListener('click', () => selectMode(b.dataset.mode));
@@ -653,8 +720,10 @@
       note = `<span class="guess-note" title="Revealed with a hint">Hint</span>`;
     }
     const displayUser = entry.isHint ? '💡 Hint' : entry.user;
+    const showAvatar = !entry.isHint && !entry.isHost && !entry.isReveal;
     return `
       <div class="guess-heat" style="width:${heatWidth(entry.rank)};background:${tierColor(entry.rank)}"></div>
+      ${showAvatar ? avatarHtml(entry.user, entry.avatar) : ''}
       <span class="guess-user">${escapeHtml(displayUser)}</span>
       <span class="guess-word">${escapeHtml(entry.word)}</span>
       ${note}
@@ -768,7 +837,7 @@
     const st = lastState;
     let text = 'Pick a mode, adjust the settings, then start a round.';
     if (st && st.game.active) {
-      if (st.mode === 'live') text = 'Round live. Guesses from TikTok chat appear below.';
+      if (st.mode === 'live') text = '';
       else if (st.mode === 'test') text = st.autoplay && st.autoplay.running
         ? 'Test round. Simulated viewers are guessing.'
         : 'Test round. Type a guess below.';
@@ -869,6 +938,7 @@
     container.innerHTML = rows.map((r, i) => `
       <li class="lb-row${i < 3 ? ' lb-medal-row' : ''}">
         <span class="lb-rank">${MEDALS[i] || (i + 1)}</span>
+        ${avatarHtml(r.user, r.avatar)}
         <span class="lb-name">${escapeHtml(r.user)}</span>
         <span class="lb-score">${r.points != null ? '+' + r.points : r.score}</span>
       </li>
@@ -893,18 +963,29 @@
   function startAutoNextCountdown() {
     let remaining = Math.max(1, Math.round(Number(settings.timingAutoNextSeconds) || 5));
     const tick = () => {
+      if (isActive()) { // a round was started by hand before the countdown finished
+        clearInterval(overlayCountdownInterval);
+        overlayCountdownInterval = null;
+        overlayCountdown.classList.add('hidden');
+        updateRoundButton();
+        return;
+      }
       overlayCountdown.classList.remove('hidden');
       overlayCountdown.textContent = `Next round starts in ${remaining}s…`;
+      // Also reflected on the round button itself, so the countdown is
+      // visible even if the leaderboard window has been dismissed.
+      roundBtn.textContent = `New round (${remaining}s)`;
     };
     tick();
     clearInterval(overlayCountdownInterval);
     overlayCountdownInterval = setInterval(() => {
       remaining -= 1;
-      if (remaining <= 0 || !settings.autoNextRound) {
+      if (remaining <= 0 || !settings.autoNextRound || isActive()) {
         clearInterval(overlayCountdownInterval);
         overlayCountdownInterval = null;
         leaderboardOverlay.classList.add('hidden');
         overlayCountdown.classList.add('hidden');
+        updateRoundButton();
         if (settings.autoNextRound && !isActive() && !starting) startRound();
         return;
       }
@@ -959,6 +1040,7 @@
   function closeLeaderboardOverlay() {
     clearLeaderboardAutoClose();
     leaderboardOverlay.classList.add('hidden');
+    updateRoundButton();
   }
   function openLeaderboardManually() {
     // A manual open always takes over from whatever round-end sequence
@@ -966,6 +1048,7 @@
     // countdown and no auto-start.
     clearTimeout(overlayTimer1);
     clearLeaderboardAutoClose();
+    updateRoundButton();
     const top = (lastState && lastState.leaderboardTop) || [];
     renderLbList(overlayLeaderboardList, top, 'No scores yet this session.');
     roundEndOverlay.classList.add('hidden');
@@ -1058,19 +1141,11 @@
   function renderState(state) {
     lastState = state;
     conn = state.connection;
+    if (state.defaultSettings) applyServerDefaultSettings(state.defaultSettings);
 
     // Header
     diagStatus.textContent = conn.status;
-    connLabel.textContent = conn.message;
-    connDot.className = 'dot dot-' + conn.status;
-    expandDot.className = 'dot dot-' + conn.status;
-    if (state.mode) {
-      modeBadge.textContent = MODE_META[state.mode].label;
-      modeBadge.className = 'mode-badge mode-' + state.mode;
-      modeBadge.classList.remove('hidden');
-    } else {
-      modeBadge.classList.add('hidden');
-    }
+    updateStatusWord();
     if (state.viewerCount != null) {
       viewerCountEl.textContent = state.viewerCount;
       viewerChip.classList.remove('hidden');
@@ -1139,7 +1214,7 @@
   // Initial paint
   // ============================================================
   selectMode(settings.mode);
-  setTopCollapsed(!!settings.topCollapsed);
+  updateStatusWord();
   updateRoundButton();
   updateHintButton();
   // Both sheets start closed — a clean, uncluttered first screen. Tap the
