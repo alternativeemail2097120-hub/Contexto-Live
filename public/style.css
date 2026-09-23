@@ -202,7 +202,16 @@ button { font-family: inherit; }
 /* ============================================================
    Main game area
    ============================================================ */
-#game { flex: 1; padding: 16px 16px calc(24px + var(--safe-bottom)); max-width: 640px; margin: 0 auto; width: 100%; }
+#game {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 16px 16px calc(24px + var(--safe-bottom));
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+}
 
 .hero { text-align: center; padding: 6px 0 16px; }
 .wordmark { font-size: 32px; font-weight: 800; letter-spacing: .3px; }
@@ -540,6 +549,14 @@ button { font-family: inherit; }
 .guess-row.is-empty { color: var(--muted); font-size: 13px; }
 
 .board {
+  display: flex;
+  flex-direction: column;
+  /* Fills whatever vertical space is left in #game after the hero, any
+     banners, and the latest-guess row above it — instead of stopping at a
+     fixed fraction of the viewport, so the list uses every pixel that's
+     actually available rather than leaving blank space below it. */
+  flex: 1;
+  min-height: 0;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -547,14 +564,15 @@ button { font-family: inherit; }
   margin-bottom: 14px;
   box-shadow: 0 10px 30px -18px rgba(0,0,0,.6);
 }
-.board-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.board-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; flex-shrink: 0; }
 .muted { color: var(--muted); font-size: 13px; }
 
 .guess-list {
   display: flex;
   flex-direction: column;
   gap: 7px;
-  max-height: max(320px, calc(var(--vh) * 68));
+  flex: 1;
+  min-height: 160px; /* floor so the list still reads fine on very short viewports */
   overflow-y: auto;
 }
 .guess-list:empty { display: none; }
@@ -750,6 +768,21 @@ button { font-family: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
+}
+
+/* Phones: shrink each guess row so noticeably more of them fit on screen
+   at once (paired with .board/.guess-list flexing to fill the available
+   height above). Row text stays a legible size — only the padding, gaps,
+   and avatar shrink — so this is "denser", not "harder to read". */
+@media (max-width: 700px) {
+  .guess-list { gap: 3px; }
+  .guess-row { padding: 5px 8px; gap: 7px; border-radius: 8px; }
+  .guess-row .pp-avatar { width: 19px; height: 19px; font-size: 8.5px; }
+  .guess-user { font-size: 10.5px; max-width: 62px; }
+  .guess-word { font-size: 12.5px; gap: 5px; }
+  .guess-rank { font-size: 10px; padding: 1px 6px; }
+  .guess-pts { font-size: 10.5px; }
+  .guess-note { font-size: 9.5px; padding: 1px 5px; }
 }
 
 /* Small phones: keep the guessed WORD readable — names and the

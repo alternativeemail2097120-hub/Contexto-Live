@@ -64,7 +64,8 @@ const PROPER_NOUN_BLOCKLIST = new Set((
   'mars venus jupiter saturn mercury neptune uranus pluto ' +
   'john james mary robert michael david william richard joseph thomas charles mark paul george ' +
   'america england france germany spain italy china japan russia india canada mexico australia ' +
-  'london paris tokyo york california texas google facebook twitter amazon microsoft apple ' +
+  'africa asia europe ' +
+  'london paris tokyo california texas google facebook twitter microsoft ' +
   'christmas easter halloween thanksgiving').split(' '));
 for (const w of PROPER_NOUN_BLOCKLIST) TARGET_BLOCKLIST.add(w);
 
@@ -448,12 +449,45 @@ const FREQ_CACHE_FILE = path.join(os.tmpdir(), 'contexto-frequency-words.v1.txt'
 // style words with little semantic content) and stop well short of the
 // tail (the rarest, least-recognizable end of the list).
 const FREQ_BAND_SKIP_TOP = 300;
-const FREQ_BAND_MAX_RANK = 15000;
+// Narrowed from 15,000 → 7,000: the lower this is, the more the target
+// word pool skews toward words a casual TikTok LIVE audience recognizes
+// instantly, at the cost of some variety. 7,000 still leaves thousands of
+// everyday nouns/verbs/adjectives to draw from without reaching into the
+// more technical/less-familiar tail of the frequency list.
+const FREQ_BAND_MAX_RANK = 7000;
 
 let frequencyOrder = [];       // words, most-to-least frequent, raw from the source
 let balancedWordPool = [];     // filtered + banded pool actually drawn from
 let balancedPoolBuiltFromSize = 0;
 let balancedPoolBuiltFromFreqLen = 0;
+
+// word -> index in frequencyOrder (0 = most frequent). Built once the
+// frequency list is loaded; used both for the target pool above and to
+// bias the semantic neighbor ranking below toward familiar words. Empty
+// (size 0) means "no frequency data yet" — every lookup below treats
+// that as "don't adjust anything" rather than guessing.
+let frequencyRankOf = new Map();
+function rebuildFrequencyRankMap() {
+  const m = new Map();
+  frequencyOrder.forEach((w, i) => { if (!m.has(w)) m.set(w, i); });
+  frequencyRankOf = m;
+}
+
+// How much to favor/penalize a word's commonness when it's competing for
+// a near-target rank with roughly similar semantic scores. This only
+// nudges close calls — a word with a much stronger semantic signal still
+// outranks a merely-more-common one — but across many near-ties it steers
+// the ranks the audience actually sees (2nd, 3rd, 10th, ...) toward
+// familiar vocabulary instead of technical/rare co-occurrences.
+function commonnessMultiplier(w) {
+  if (!frequencyRankOf.size) return 1; // no frequency data loaded yet
+  const r = frequencyRankOf.get(w);
+  if (r === undefined) return 0.45;  // not even in the top 50k — likely obscure
+  if (r < 5000) return 1.3;          // everyday word — nudge up
+  if (r < 15000) return 1.0;         // still common — no change
+  if (r < 30000) return 0.7;         // getting uncommon — mild nudge down
+  return 0.5;                        // rare tail of the list — nudge down more
+}
 
 function rebuildBalancedWordPool() {
   const source = frequencyOrder.length ? frequencyOrder : [];
@@ -513,6 +547,7 @@ async function loadFrequencyList() {
       }
     } catch { /* ignore an unreadable cache */ }
   }
+  rebuildFrequencyRankMap();
   rebuildBalancedWordPool();
   pushState();
 }
@@ -639,9 +674,17 @@ async function buildSemanticCore(target) {
     anyOk = true;
     const weight = RELATION_WEIGHTS[codes[i]];
     res.value.forEach((item, listRank) => {
+      // Datamuse occasionally returns multi-word phrases (e.g. "ice cream")
+      // or hyphenated compounds for some relations — skip those rather than
+      // mangling them into a fake single word via normalize().
+      if (/[\s-]/.test(item.word)) return;
       const w = normalize(item.word);
       if (!w || w === target || isTrivialVariant(target, w)) return;
-      const contribution = weight / (RRF_K + listRank + 1);
+      // Keep proper nouns and blocked words out of the near-target ranks
+      // too, not just out of target selection — an audience shouldn't see
+      // a name/brand sitting at rank #4.
+      if (TARGET_BLOCKLIST.has(w)) return;
+      const contribution = (weight / (RRF_K + listRank + 1)) * commonnessMultiplier(w);
       fused.set(w, (fused.get(w) || 0) + contribution);
     });
   });

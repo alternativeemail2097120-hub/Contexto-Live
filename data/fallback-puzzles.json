@@ -162,7 +162,6 @@
     "book",
     "movie",
     "game",
-    "chinese",
     "folklore",
     "epic"
   ],
@@ -180,9 +179,9 @@
     "droplets", "mist", "bright", "hue", "painting", "sunset", "shower", "color"
   ],
   "elephant": [
-    "elephant", "trunk", "tusk", "africa", "safari", "zoo", "mammal", "gray",
+    "elephant", "trunk", "tusk", "safari", "zoo", "mammal", "gray",
     "large", "herd", "ivory", "jungle", "circus", "ears", "wildlife",
-    "savanna", "tusks", "giant", "gentle", "memory", "india", "asia",
+    "savanna", "tusks", "giant", "gentle", "memory",
     "animal", "wrinkled", "heavy", "grassland", "conservation", "poacher",
     "calf", "matriarch"
   ],
@@ -245,7 +244,6 @@
     "topping",
     "pepperoni",
     "crust",
-    "italian",
     "restaurant",
     "delivery",
     "sauce",
@@ -262,7 +260,6 @@
     "pasta",
     "menu",
     "party",
-    "friday",
     "order",
     "chef",
     "flavor",
