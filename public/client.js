@@ -273,6 +273,116 @@
   document.addEventListener('webkitfullscreenchange', syncFsButton);
 
   // ============================================================
+  // Color themes — one symbol on the toolbar button, full names only
+  // inside the opened dropdown. Remembered per device.
+  // ============================================================
+  const THEMES = [
+    { id: 'midnight', name: 'Midnight',        emoji: '🌙' },
+    { id: 'cream',    name: 'Cream',           emoji: '🥛' },
+    { id: 'sky',      name: 'Sky Blue',        emoji: '🌤️' },
+    { id: 'meadow',   name: 'Meadow Green',    emoji: '🌿' },
+    { id: 'blossom',  name: 'Blossom Pink',    emoji: '🌸' },
+    { id: 'lavender', name: 'Lavender Violet', emoji: '🪻' },
+    { id: 'honey',    name: 'Honey Gold',      emoji: '🍯' },
+  ];
+  const THEME_KEY = 'contextoLive.theme';
+  const themeToggle = el('themeToggle');
+  const themeIcon = el('themeIcon');
+  const themeMenu = el('themeMenu');
+  const themeMetaTag = document.querySelector('meta[name="theme-color"]');
+
+  function loadTheme() {
+    try { return localStorage.getItem(THEME_KEY) || 'midnight'; } catch (e) { return 'midnight'; }
+  }
+  function saveTheme(id) {
+    try { localStorage.setItem(THEME_KEY, id); } catch (e) { /* private mode etc. */ }
+  }
+  function applyTheme(id) {
+    const theme = THEMES.find((t) => t.id === id) || THEMES[0];
+    if (theme.id === 'midnight') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', theme.id);
+    themeIcon.textContent = theme.emoji;
+    themeToggle.title = 'Theme (' + theme.name + ')';
+    if (themeMetaTag) {
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+      if (bg) themeMetaTag.setAttribute('content', bg);
+    }
+    $$('.theme-option').forEach((opt) => opt.setAttribute('aria-selected', String(opt.dataset.themeId === theme.id)));
+    return theme;
+  }
+  let currentTheme = loadTheme();
+  THEMES.forEach((theme) => {
+    const opt = document.createElement('button');
+    opt.type = 'button';
+    opt.className = 'theme-option';
+    opt.setAttribute('role', 'option');
+    opt.dataset.themeId = theme.id;
+    opt.innerHTML = `<span class="swatch" aria-hidden="true">${theme.emoji}</span><span class="name">${escapeHtml(theme.name)}</span><span class="check" aria-hidden="true">✓</span>`;
+    opt.addEventListener('click', () => {
+      currentTheme = theme.id;
+      saveTheme(currentTheme);
+      applyTheme(currentTheme);
+      closeThemeMenu();
+    });
+    themeMenu.appendChild(opt);
+  });
+  applyTheme(currentTheme);
+
+  function openThemeMenu() {
+    const r = themeToggle.getBoundingClientRect();
+    const menuWidth = 190;
+    const left = Math.min(Math.max(8, r.left), window.innerWidth - menuWidth - 8);
+    themeMenu.style.top = (r.bottom + 8) + 'px';
+    themeMenu.style.left = left + 'px';
+    themeMenu.classList.remove('hidden');
+    themeToggle.setAttribute('aria-expanded', 'true');
+  }
+  function closeThemeMenu() {
+    themeMenu.classList.add('hidden');
+    themeToggle.setAttribute('aria-expanded', 'false');
+  }
+  function isThemeMenuOpen() { return !themeMenu.classList.contains('hidden'); }
+  themeToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (isThemeMenuOpen()) closeThemeMenu(); else openThemeMenu();
+  });
+  document.addEventListener('click', (e) => {
+    if (isThemeMenuOpen() && !themeMenu.contains(e.target) && e.target !== themeToggle) closeThemeMenu();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isThemeMenuOpen()) closeThemeMenu(); });
+
+  // ============================================================
+  // Collapse the entire top toolbar into a single reveal button, to
+  // hand the freed-up vertical space to the game itself. Remembered
+  // per device.
+  // ============================================================
+  const TOOLBAR_HIDDEN_KEY = 'contextoLive.toolbarHidden';
+  const toolbarHideBtn = el('toolbarHideBtn');
+  const toolbarShowBtn = el('toolbarShowBtn');
+
+  function loadToolbarHidden() {
+    try { return localStorage.getItem(TOOLBAR_HIDDEN_KEY) === '1'; } catch (e) { return false; }
+  }
+  function saveToolbarHidden(hidden) {
+    try { localStorage.setItem(TOOLBAR_HIDDEN_KEY, hidden ? '1' : '0'); } catch (e) { /* private mode etc. */ }
+  }
+  function setToolbarHidden(hidden) {
+    diagnosticsEl.classList.toggle('toolbar-collapsed', hidden);
+    toolbarShowBtn.classList.toggle('hidden', !hidden);
+    diagnosticsEl.setAttribute('aria-hidden', String(hidden));
+    if (hidden) closeThemeMenu();
+  }
+  toolbarHideBtn.addEventListener('click', () => {
+    saveToolbarHidden(true);
+    setToolbarHidden(true);
+  });
+  toolbarShowBtn.addEventListener('click', () => {
+    saveToolbarHidden(false);
+    setToolbarHidden(false);
+  });
+  setToolbarHidden(loadToolbarHidden());
+
+  // ============================================================
   // Settings (remembered between visits on this device)
   // ============================================================
   const MODE_META = {

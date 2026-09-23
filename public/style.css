@@ -12,6 +12,7 @@
 
   --brand-cyan: #25f4ee;
   --brand-pink: #fe2c55;
+  --brand-pink-2: #ff6b8b;
   --gold: #ffc24b;
 
   /* Authentic Contexto rank tiers: 2-50 dark green, 51-300 green,
@@ -36,6 +37,52 @@
   --safe-right: env(safe-area-inset-right, 0px);
 }
 
+/* ============================================================
+   Color themes — every token above is redefined per theme, and
+   because the rest of this file is built entirely on those tokens
+   (plus color-mix() for tinted chips/backgrounds), picking a theme
+   re-colors the whole game: text, panels, buttons, status chips,
+   rank badges, banners, everything. Text/muted/accent colors are
+   each chosen dark and saturated enough to stay easy to read on
+   their theme's light panels.
+   ============================================================ */
+:root[data-theme="cream"] {
+  --bg: #faf5ea; --bg-2: #f2e9d8; --panel: #fffdf9; --panel-2: #efe6d2; --line: #ddd0b0;
+  --text: #2c2417; --muted: #7d7059;
+  --brand-cyan: #0d7d78; --brand-pink: #c23a63; --brand-pink-2: #e0698d; --gold: #a8720d;
+  --tier-exact: #a8720d; --tier-dark-green: #1f7a3d; --tier-green: #2f9e52; --tier-orange: #bd611a; --tier-red: #c03a3a;
+}
+:root[data-theme="sky"] {
+  --bg: #eaf4fb; --bg-2: #dcecf7; --panel: #ffffff; --panel-2: #d7e9f5; --line: #b7d7ec;
+  --text: #132c42; --muted: #557791;
+  --brand-cyan: #0072a8; --brand-pink: #c93f72; --brand-pink-2: #e0699a; --gold: #a97313;
+  --tier-exact: #a97313; --tier-dark-green: #157a45; --tier-green: #1f9d5c; --tier-orange: #bd611a; --tier-red: #c03a4d;
+}
+:root[data-theme="meadow"] {
+  --bg: #eff8ea; --bg-2: #e1f1d9; --panel: #ffffff; --panel-2: #daecce; --line: #b9dca5;
+  --text: #1c3714; --muted: #587a4b;
+  --brand-cyan: #0d7d78; --brand-pink: #bf3c66; --brand-pink-2: #dd6b93; --gold: #93720f;
+  --tier-exact: #93720f; --tier-dark-green: #1c7a3d; --tier-green: #2f9e52; --tier-orange: #b5601c; --tier-red: #b93b3b;
+}
+:root[data-theme="blossom"] {
+  --bg: #fdf1f4; --bg-2: #fbe3ea; --panel: #ffffff; --panel-2: #f6d9e3; --line: #f0bccf;
+  --text: #4a1a2c; --muted: #966078;
+  --brand-cyan: #0d7d80; --brand-pink: #bd3d76; --brand-pink-2: #e26a9c; --gold: #a97313;
+  --tier-exact: #a97313; --tier-dark-green: #1c7a3d; --tier-green: #2f9e52; --tier-orange: #b5601c; --tier-red: #bd3358;
+}
+:root[data-theme="lavender"] {
+  --bg: #f4f0fb; --bg-2: #e9e0f6; --panel: #ffffff; --panel-2: #e3d6f3; --line: #cbb3e6;
+  --text: #2c1d49; --muted: #6f5f8f;
+  --brand-cyan: #0d7d80; --brand-pink: #a83a8e; --brand-pink-2: #c569ac; --gold: #93720f;
+  --tier-exact: #93720f; --tier-dark-green: #1c7a3d; --tier-green: #2f9e52; --tier-orange: #b5601c; --tier-red: #a83a6a;
+}
+:root[data-theme="honey"] {
+  --bg: #fdf6e3; --bg-2: #faecc1; --panel: #fffdf5; --panel-2: #f5e2a0; --line: #e3c876;
+  --text: #463608; --muted: #8a7135;
+  --brand-cyan: #0d7d78; --brand-pink: #bd3a62; --brand-pink-2: #dd6a8e; --gold: #8f6108;
+  --tier-exact: #8f6108; --tier-dark-green: #1c7a3d; --tier-green: #2f9e52; --tier-orange: #b5601c; --tier-red: #b93b3b;
+}
+
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
 html {
@@ -45,13 +92,14 @@ html, body {
   margin: 0;
   padding: 0;
   background:
-    radial-gradient(ellipse 900px 500px at 15% -5%, rgba(254,44,85,.10), transparent 60%),
-    radial-gradient(ellipse 800px 500px at 85% 0%, rgba(37,244,238,.08), transparent 60%),
+    radial-gradient(ellipse 900px 500px at 15% -5%, color-mix(in srgb, var(--brand-pink) 10%, transparent), transparent 60%),
+    radial-gradient(ellipse 800px 500px at 85% 0%, color-mix(in srgb, var(--brand-cyan) 8%, transparent), transparent 60%),
     var(--bg);
   color: var(--text);
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
+  transition: background-color .2s ease, color .2s ease;
 }
 body { min-height: calc(var(--vh) * 100); }
 
@@ -66,8 +114,9 @@ button { font-family: inherit; }
    Diagnostics / status header
    ============================================================ */
 #diagnostics {
-  background: rgba(8,9,15,.92);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
   backdrop-filter: blur(8px);
+  transition: background-color .2s ease, height .2s ease, padding-top .2s ease;
   border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
@@ -107,9 +156,9 @@ button { font-family: inherit; }
 .icon-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
 
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
-.dot-idle { background: #5a5f78; }
+.dot-idle { background: var(--muted); }
 .dot-connecting, .dot-retrying { background: var(--gold); animation: pulse 1.2s infinite; }
-.dot-connected { background: #35d07f; }
+.dot-connected { background: var(--tier-dark-green); }
 .dot-error { background: var(--brand-pink); }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 
@@ -124,12 +173,12 @@ button { font-family: inherit; }
   text-transform: uppercase;
   white-space: nowrap;
 }
-.status-word.status-idle { background: rgba(90,95,120,.18); color: var(--muted); border: 1px solid var(--line); }
-.status-word.status-live { background: rgba(53,208,127,.16); color: #35d07f; border: 1px solid #35d07f; }
-.status-word.status-connecting { background: rgba(255,194,75,.16); color: var(--gold); border: 1px solid var(--gold); animation: pulse 1.2s infinite; }
-.status-word.status-error { background: rgba(254,44,85,.16); color: var(--brand-pink); border: 1px solid var(--brand-pink); }
-.status-word.status-test { background: rgba(37,244,238,.14); color: var(--mode-test); border: 1px solid var(--mode-test); }
-.status-word.status-offline { background: rgba(255,194,75,.14); color: var(--mode-offline); border: 1px solid var(--mode-offline); }
+.status-word.status-idle { background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--muted); border: 1px solid var(--line); }
+.status-word.status-live { background: color-mix(in srgb, var(--tier-dark-green) 16%, transparent); color: var(--tier-dark-green); border: 1px solid var(--tier-dark-green); }
+.status-word.status-connecting { background: color-mix(in srgb, var(--gold) 16%, transparent); color: var(--gold); border: 1px solid var(--gold); animation: pulse 1.2s infinite; }
+.status-word.status-error { background: color-mix(in srgb, var(--brand-pink) 16%, transparent); color: var(--brand-pink); border: 1px solid var(--brand-pink); }
+.status-word.status-test { background: color-mix(in srgb, var(--mode-test) 14%, transparent); color: var(--mode-test); border: 1px solid var(--mode-test); }
+.status-word.status-offline { background: color-mix(in srgb, var(--mode-offline) 14%, transparent); color: var(--mode-offline); border: 1px solid var(--mode-offline); }
 
 .viewer-chip {
   font-size: 12px;
@@ -146,7 +195,8 @@ button { font-family: inherit; }
 .raw-samples summary { cursor: pointer; }
 .diag-row strong.warn { color: var(--gold); }
 #diagRaw {
-  background: #05060a;
+  background: var(--bg-2);
+  color: var(--text);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px;
@@ -200,6 +250,89 @@ button { font-family: inherit; }
 .top-bar .btn { flex: 0 0 auto; min-width: 108px; padding: 8px 14px; margin-left: 4px; text-align: center; }
 
 /* ============================================================
+   Theme picker — button shows only the current theme's symbol;
+   the dropdown (opened on tap) is the only place a full theme
+   name appears.
+   ============================================================ */
+.theme-picker { position: relative; }
+#themeToggle span { font-size: 17px; line-height: 1; }
+.theme-menu {
+  /* Fixed (not absolute) because .top-bar scrolls horizontally, which
+     would otherwise clip a menu positioned relative to it — position is
+     computed in JS from the button's on-screen location when it opens. */
+  position: fixed;
+  z-index: 60;
+  min-width: 190px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  box-shadow: 0 14px 34px -12px rgba(0,0,0,.5);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.theme-menu.hidden { display: none; }
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.theme-option:hover, .theme-option:focus-visible { background: var(--panel-2); outline: none; }
+.theme-option .swatch { font-size: 16px; line-height: 1; flex-shrink: 0; width: 20px; text-align: center; }
+.theme-option .name { flex: 1; }
+.theme-option .check { color: var(--brand-cyan); font-weight: 800; opacity: 0; flex-shrink: 0; }
+.theme-option[aria-selected="true"] { background: var(--panel-2); }
+.theme-option[aria-selected="true"] .check { opacity: 1; }
+
+/* ============================================================
+   Collapse the whole top toolbar into a single reveal button, to
+   free up maximum vertical space for the game itself.
+   ============================================================ */
+/* Collapsing to height:0 (rather than just hiding) actually reclaims the
+   vertical space for the game below, which is the point of hiding it. */
+#diagnostics.toolbar-collapsed {
+  height: 0;
+  min-height: 0;
+  padding-top: 0;
+  overflow: hidden;
+  border-bottom-width: 0;
+  pointer-events: none;
+}
+.toolbar-reveal {
+  position: fixed;
+  top: calc(8px + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  width: 34px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 0 0 12px 12px;
+  border: 1px solid var(--line);
+  border-top: none;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  backdrop-filter: blur(8px);
+  color: var(--muted);
+  cursor: pointer;
+  box-shadow: 0 6px 16px -8px rgba(0,0,0,.4);
+}
+.toolbar-reveal:hover { color: var(--text); }
+.toolbar-reveal.hidden { display: none; }
+
+/* ============================================================
    Main game area
    ============================================================ */
 #game {
@@ -216,7 +349,7 @@ button { font-family: inherit; }
 .hero { text-align: center; padding: 6px 0 16px; }
 .wordmark { font-size: 32px; font-weight: 800; letter-spacing: .3px; }
 .wordmark span {
-  background: linear-gradient(90deg, var(--brand-pink), #ff6b8b);
+  background: linear-gradient(90deg, var(--brand-pink), var(--brand-pink-2));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -242,9 +375,9 @@ button { font-family: inherit; }
   text-transform: uppercase;
   letter-spacing: .04em;
 }
-.diff-chip.diff-live { background: rgba(254,44,85,.15); color: var(--mode-live); }
-.diff-chip.diff-test { background: rgba(37,244,238,.14); color: var(--mode-test); }
-.diff-chip.diff-offline { background: rgba(255,194,75,.14); color: var(--mode-offline); }
+.diff-chip.diff-live { background: color-mix(in srgb, var(--mode-live) 15%, transparent); color: var(--mode-live); }
+.diff-chip.diff-test { background: color-mix(in srgb, var(--mode-test) 14%, transparent); color: var(--mode-test); }
+.diff-chip.diff-offline { background: color-mix(in srgb, var(--mode-offline) 14%, transparent); color: var(--mode-offline); }
 
 /* ============================================================
    Shared controls
@@ -265,7 +398,7 @@ button { font-family: inherit; }
 .btn-primary { background: var(--brand-pink); color: #fff; }
 .btn-outline { background: transparent; border: 1px solid var(--brand-cyan); color: var(--brand-cyan); }
 .btn-ghost { background: var(--panel-2); color: var(--text); }
-.btn.armed { background: rgba(254,44,85,.18); color: var(--brand-pink); box-shadow: inset 0 0 0 1px var(--brand-pink); }
+.btn.armed { background: color-mix(in srgb, var(--brand-pink) 18%, transparent); color: var(--brand-pink); box-shadow: inset 0 0 0 1px var(--brand-pink); }
 
 .input, .select {
   width: 100%;
@@ -405,7 +538,7 @@ button { font-family: inherit; }
   background: var(--muted);
   transition: transform .15s, background .15s;
 }
-.switch input:checked + .track { background: rgba(37,244,238,.18); border-color: var(--brand-cyan); }
+.switch input:checked + .track { background: color-mix(in srgb, var(--brand-cyan) 18%, transparent); border-color: var(--brand-cyan); }
 .switch input:checked + .track::after { transform: translateX(16px); background: var(--brand-cyan); }
 .switch input:focus-visible + .track { outline: 2px solid var(--gold); outline-offset: 2px; }
 
@@ -482,7 +615,7 @@ button { font-family: inherit; }
   border-top: 1px solid var(--line);
 }
 .leaderboard-tools .btn { flex: 1; text-align: center; }
-#resetLeaderboardBtn.armed { background: rgba(254,44,85,.18); color: var(--brand-pink); box-shadow: inset 0 0 0 1px var(--brand-pink); }
+#resetLeaderboardBtn.armed { background: color-mix(in srgb, var(--brand-pink) 18%, transparent); color: var(--brand-pink); box-shadow: inset 0 0 0 1px var(--brand-pink); }
 
 /* Save & Apply tools — confirm settings on this device, or push them to
    every device as the default. */
@@ -538,7 +671,7 @@ button { font-family: inherit; }
 }
 .win-banner {
   background-color: var(--panel);
-  background-image: linear-gradient(120deg, rgba(255,194,75,.16), rgba(254,44,85,.12));
+  background-image: linear-gradient(120deg, color-mix(in srgb, var(--gold) 16%, transparent), color-mix(in srgb, var(--brand-pink) 12%, transparent));
 }
 
 /* ============================================================
@@ -598,7 +731,7 @@ button { font-family: inherit; }
 .guess-row.win { border-color: var(--tier-exact); }
 .guess-row.host { border: 1px dashed var(--brand-cyan); }
 .guess-row.hint { border: 1px dashed var(--gold); }
-.guess-row.repeat { border-color: rgba(255,194,75,.5); }
+.guess-row.repeat { border-color: color-mix(in srgb, var(--gold) 50%, transparent); }
 .guess-user { font-weight: 700; font-size: 12.5px; z-index: 1; white-space: nowrap; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
 .guess-row.hint .guess-user { color: var(--gold); }
 .guess-row .pp-avatar { width: 26px; height: 26px; font-size: 11px; z-index: 1; }
@@ -608,7 +741,7 @@ button { font-family: inherit; }
   font-size: 11px;
   font-weight: 700;
   color: var(--gold);
-  background: rgba(255,194,75,.14);
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
   padding: 2px 8px;
   border-radius: 999px;
   white-space: nowrap;
@@ -617,11 +750,11 @@ button { font-family: inherit; }
 .guess-pts { z-index: 1; font-size: 12px; font-weight: 800; color: var(--gold); white-space: nowrap; }
 .guess-rank { z-index: 1; font-size: 11.5px; font-weight: 800; white-space: nowrap; padding: 2px 8px; border-radius: 999px; }
 
-.rank-exact { background: rgba(255,194,75,.2); color: var(--tier-exact); }
-.rank-dark-green { background: rgba(22,163,74,.22); color: #4ade80; }
-.rank-green { background: rgba(74,222,128,.16); color: var(--tier-green); }
-.rank-orange { background: rgba(251,146,60,.16); color: var(--tier-orange); }
-.rank-red { background: rgba(244,63,94,.14); color: var(--tier-red); }
+.rank-exact { background: color-mix(in srgb, var(--tier-exact) 20%, transparent); color: var(--tier-exact); }
+.rank-dark-green { background: color-mix(in srgb, var(--tier-dark-green) 22%, transparent); color: var(--tier-dark-green); }
+.rank-green { background: color-mix(in srgb, var(--tier-green) 16%, transparent); color: var(--tier-green); }
+.rank-orange { background: color-mix(in srgb, var(--tier-orange) 16%, transparent); color: var(--tier-orange); }
+.rank-red { background: color-mix(in srgb, var(--tier-red) 14%, transparent); color: var(--tier-red); }
 
 /* ---------- Toasts ---------- */
 #toastHost {
