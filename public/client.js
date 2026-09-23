@@ -109,6 +109,12 @@
   const offlineWord = el('offlineWord');
   const autoNextToggle = el('autoNextToggle');
   const autoNextText = el('autoNextText');
+  const timingAnswerSeconds = el('timingAnswerSeconds');
+  const timingLeaderboardSeconds = el('timingLeaderboardSeconds');
+  const timingPopupSeconds = el('timingPopupSeconds');
+  const timingAutoNextSeconds = el('timingAutoNextSeconds');
+  const resetAllTimingsBtn = el('resetAllTimingsBtn');
+  const resetMiniBtns = $$('.reset-mini-btn');
 
   // Board
   const latestRow = el('latestRow');
@@ -130,8 +136,10 @@
   const overlayScorers = el('overlayScorers');
   const leaderboardOverlay = el('leaderboardOverlay');
   const overlayLeaderboardList = el('overlayLeaderboardList');
+  const overlayCountdown = el('overlayCountdown');
   const leaderboardCloseBtn = el('leaderboardCloseBtn');
   const viewLeaderboardBtn = el('viewLeaderboardBtn');
+  const leaderboardToggle = el('leaderboardToggle');
   const resetLeaderboardBtn = el('resetLeaderboardBtn');
 
   // ============================================================
@@ -305,11 +313,27 @@
     offline: { label: 'Offline', hint: 'No TikTok needed. You type each guess yourself.' },
   };
   const STORE_KEY = 'contextoLive.settings.v3';
-  const DEFAULTS = {
+  // Every floating window's on-screen duration, plus the auto-next-round
+  // countdown, in seconds — each independently adjustable in Settings,
+  // each with its own reset-to-default (and one reset-all). These are the
+  // exact durations the app always used before they became adjustable.
+  const DEFAULT_TIMINGS = {
+    timingAnswerSeconds: 4.2,      // "answer + top scorers" floating window
+    timingLeaderboardSeconds: 5,   // all-time leaderboard window (Auto next round OFF)
+    timingPopupSeconds: 2.7,       // "+N points" floating popup
+    timingAutoNextSeconds: 5,      // visible countdown before auto-starting the next round
+  };
+  const TIMING_LIMITS = {
+    timingAnswerSeconds: [1, 30],
+    timingLeaderboardSeconds: [1, 60],
+    timingPopupSeconds: [0.5, 10],
+    timingAutoNextSeconds: [1, 60],
+  };
+  const DEFAULTS = Object.assign({
     mode: 'live', username: '',
     autoplay: true, speed: 'normal', playerName: '',
     topCollapsed: false, autoNextRound: false,
-  };
+  }, DEFAULT_TIMINGS);
   function loadSettings() {
     try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; }
   }
@@ -328,6 +352,49 @@
   autoplayToggle.checked = !!settings.autoplay;
   playerName.value = settings.playerName;
   autoNextToggle.checked = !!settings.autoNextRound;
+
+  // Timing controls: clamp any out-of-range/garbage value (e.g. from an
+  // older localStorage entry) back into range before it ever reaches an
+  // input or a setTimeout.
+  function clampTiming(id, value) {
+    const [lo, hi] = TIMING_LIMITS[id];
+    const n = Number(value);
+    if (!Number.isFinite(n)) return DEFAULT_TIMINGS[id];
+    return Math.min(hi, Math.max(lo, n));
+  }
+  function syncTimingInputs() {
+    timingAnswerSeconds.value = settings.timingAnswerSeconds;
+    timingLeaderboardSeconds.value = settings.timingLeaderboardSeconds;
+    timingPopupSeconds.value = settings.timingPopupSeconds;
+    timingAutoNextSeconds.value = settings.timingAutoNextSeconds;
+  }
+  Object.keys(DEFAULT_TIMINGS).forEach((id) => { settings[id] = clampTiming(id, settings[id]); });
+  syncTimingInputs();
+
+  const timingInputEls = {
+    timingAnswerSeconds, timingLeaderboardSeconds, timingPopupSeconds, timingAutoNextSeconds,
+  };
+  Object.entries(timingInputEls).forEach(([id, input]) => {
+    input.addEventListener('change', () => {
+      settings[id] = clampTiming(id, input.value);
+      input.value = settings[id];
+      saveSettings();
+    });
+  });
+  resetMiniBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.resetFor;
+      if (!DEFAULT_TIMINGS.hasOwnProperty(id)) return;
+      settings[id] = DEFAULT_TIMINGS[id];
+      syncTimingInputs();
+      saveSettings();
+    });
+  });
+  resetAllTimingsBtn.addEventListener('click', () => {
+    Object.keys(DEFAULT_TIMINGS).forEach((id) => { settings[id] = DEFAULT_TIMINGS[id]; });
+    syncTimingInputs();
+    saveSettings();
+  });
 
   // Live state mirrors
   let lastState = null;
@@ -752,7 +819,6 @@
   // kept so it can't fall further and further behind real time.
   // ============================================================
   const POPUP_QUEUE_MAX = 5;
-  const POPUP_VISIBLE_MS = 2700; // matches popIn (.25s) + hold + popOut (.3s) in CSS
   let popupQueue = [];
   let popupShowing = false;
 
@@ -783,34 +849,73 @@
       card.remove();
       popupShowing = false;
       advancePopupQueue();
-    }, POPUP_VISIBLE_MS);
+    }, Math.max(500, Number(settings.timingPopupSeconds) * 1000 || 2700));
   }
 
   // ============================================================
   // Round-end floating sequence: answer + this round's top scorers,
   // then (auto-advancing, no tap needed) the all-time leaderboard.
   // ============================================================
-  let overlayTimer1 = null;
-  let overlayTimer2 = null;
+  let overlayTimer1 = null;         // "answer + top scorers" window duration
+  let leaderboardCloseTimer = null; // leaderboard window duration (Auto next round OFF)
+  let overlayCountdownInterval = null; // ticking "Next round starts in Ns" (Auto next round ON)
 
   function renderLbList(container, rows, emptyText) {
     if (!rows || !rows.length) {
       container.innerHTML = `<li class="lb-empty">${escapeHtml(emptyText)}</li>`;
       return;
     }
+    const MEDALS = ['🥇', '🥈', '🥉'];
     container.innerHTML = rows.map((r, i) => `
-      <li class="lb-row">
-        <span class="lb-rank">${i + 1}</span>
+      <li class="lb-row${i < 3 ? ' lb-medal-row' : ''}">
+        <span class="lb-rank">${MEDALS[i] || (i + 1)}</span>
         <span class="lb-name">${escapeHtml(r.user)}</span>
         <span class="lb-score">${r.points != null ? '+' + r.points : r.score}</span>
       </li>
     `).join('');
   }
 
+  // Cancels whatever is currently keeping the leaderboard window up (the
+  // plain timer when Auto next round is off, or the ticking countdown when
+  // it's on) — used before showing it again, and when it's closed by hand.
+  function clearLeaderboardAutoClose() {
+    clearTimeout(leaderboardCloseTimer);
+    leaderboardCloseTimer = null;
+    clearInterval(overlayCountdownInterval);
+    overlayCountdownInterval = null;
+    overlayCountdown.classList.add('hidden');
+  }
+
+  // Visible, ticking countdown shown inside the leaderboard window when
+  // Auto next round is on — re-reads the setting each second so a change
+  // made mid-countdown (or the host starting a round by hand) takes effect
+  // immediately instead of waiting for the next round to pick it up.
+  function startAutoNextCountdown() {
+    let remaining = Math.max(1, Math.round(Number(settings.timingAutoNextSeconds) || 5));
+    const tick = () => {
+      overlayCountdown.classList.remove('hidden');
+      overlayCountdown.textContent = `Next round starts in ${remaining}s…`;
+    };
+    tick();
+    clearInterval(overlayCountdownInterval);
+    overlayCountdownInterval = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0 || !settings.autoNextRound) {
+        clearInterval(overlayCountdownInterval);
+        overlayCountdownInterval = null;
+        leaderboardOverlay.classList.add('hidden');
+        overlayCountdown.classList.add('hidden');
+        if (settings.autoNextRound && !isActive() && !starting) startRound();
+        return;
+      }
+      tick();
+    }, 1000);
+  }
+
   function runRoundEndSequence(result) {
     if (!result) return;
     clearTimeout(overlayTimer1);
-    clearTimeout(overlayTimer2);
+    clearLeaderboardAutoClose();
     roundEndOverlay.classList.add('hidden');
     leaderboardOverlay.classList.add('hidden');
 
@@ -824,38 +929,50 @@
     if (scorers.length) renderLbList(overlayScorers, scorers, '');
 
     roundEndOverlay.classList.remove('hidden');
+    const answerMs = Math.max(500, Number(settings.timingAnswerSeconds) * 1000 || 4200);
     overlayTimer1 = setTimeout(() => {
       roundEndOverlay.classList.add('hidden');
       const top = result.leaderboardTop || (lastState && lastState.leaderboardTop) || [];
       renderLbList(overlayLeaderboardList, top, 'No scores yet this session.');
       leaderboardOverlay.classList.remove('hidden');
-      overlayTimer2 = setTimeout(() => {
-        leaderboardOverlay.classList.add('hidden');
-        // Auto next round: fires once the answer/scorers/leaderboard
-        // sequence has finished playing out. Re-checks the live setting
-        // (not a value captured earlier) and skips if a round is already
-        // active or already being started, e.g. because the host started
-        // one by hand while this was waiting.
-        if (settings.autoNextRound && !isActive() && !starting) startRound();
-      }, 5000);
-    }, 4200);
+
+      // Auto next round: shows a live countdown and starts the next round
+      // once it hits zero. Off: the leaderboard just sits for its own
+      // configured duration, no countdown, no auto-start. Both re-check
+      // the live setting rather than a value captured earlier.
+      if (settings.autoNextRound) {
+        startAutoNextCountdown();
+      } else {
+        const lbMs = Math.max(500, Number(settings.timingLeaderboardSeconds) * 1000 || 5000);
+        leaderboardCloseTimer = setTimeout(() => {
+          leaderboardOverlay.classList.add('hidden');
+        }, lbMs);
+      }
+    }, answerMs);
   }
 
   // ============================================================
-  // Manual leaderboard controls (item 7) — view any time from Settings,
-  // and reset the all-time session leaderboard (double-tap to confirm,
-  // same pattern as "End round").
+  // Manual leaderboard controls (item 7) — view any time from Settings or
+  // the top toolbar trophy icon, and reset the all-time session
+  // leaderboard (double-tap to confirm, same pattern as "End round").
   // ============================================================
   function closeLeaderboardOverlay() {
-    clearTimeout(overlayTimer2);
+    clearLeaderboardAutoClose();
     leaderboardOverlay.classList.add('hidden');
   }
-  viewLeaderboardBtn.addEventListener('click', () => {
+  function openLeaderboardManually() {
+    // A manual open always takes over from whatever round-end sequence
+    // might be running — it stays open until the host closes it, with no
+    // countdown and no auto-start.
+    clearTimeout(overlayTimer1);
+    clearLeaderboardAutoClose();
     const top = (lastState && lastState.leaderboardTop) || [];
     renderLbList(overlayLeaderboardList, top, 'No scores yet this session.');
     roundEndOverlay.classList.add('hidden');
     leaderboardOverlay.classList.remove('hidden');
-  });
+  }
+  viewLeaderboardBtn.addEventListener('click', openLeaderboardManually);
+  leaderboardToggle.addEventListener('click', openLeaderboardManually);
   leaderboardCloseBtn.addEventListener('click', closeLeaderboardOverlay);
   leaderboardOverlay.addEventListener('click', (e) => { if (e.target === leaderboardOverlay) closeLeaderboardOverlay(); });
 

@@ -94,7 +94,7 @@ address at the top of the page, like `https://contexto-live.onrender.com`
    to the bottom where your thumb (or your phone case) gets in the way.
 2. At the top is a small status bar — it will say **"Not connected yet"**.
    Tap it any time to see live diagnostics (see below).
-3. Right below the status bar is a compact **action bar** with just four
+3. Right below the status bar is a compact **action bar** with five
    controls, so the screen stays clean and out of your way:
    - **⚙️ Settings icon** — opens a panel that slides up from the bottom
      where you pick a mode and its options, then slides away again. A
@@ -105,6 +105,9 @@ address at the top of the page, like `https://contexto-live.onrender.com`
      can type a guess yourself. Opening one panel closes the other
      automatically, so they never fight for space, and tapping outside
      the panel (or the ✕) closes it.
+   - **🏆 Leaderboard icon** — opens the all-time leaderboard in a floating
+     window, centered on screen, any time you like — mid-round or between
+     rounds. It stays open until you tap the ✕ or tap outside it.
    - **Start round / End round** — always visible, right there in the bar.
 4. In **Settings**, pick a mode with the **Live / Test / Offline** switch:
    - **Live** — reads your real TikTok LIVE chat. Type your TikTok username
@@ -150,7 +153,7 @@ address at the top of the page, like `https://contexto-live.onrender.com`
    the top-right corner showing their profile picture (when TikTok sends
    one — otherwise a colored initial), their name, the word they guessed,
    and the points they just earned. It fades out on its own after a few
-   seconds.
+   seconds — how many is yours to set, see "Timing controls" below.
 9. **Fullscreen.** Tap the corner-arrows button at the top right to go
    fullscreen, and tap it again (or press Esc) to leave. The game keeps its
    normal width and stays centered, so nothing is stretched. On an iPhone,
@@ -162,13 +165,40 @@ address at the top of the page, like `https://contexto-live.onrender.com`
     - First, a window showing **the answer** in large text, plus a short
       "🏅 Top scorers this round" list (whoever earned the most points
       this round).
-    - A few seconds later that window is replaced by a **🏆 All-time top
-      scores** window (top 20 for this streaming session), which then
-      fades away on its own.
+    - That window is then replaced by a **🏆 All-time top scores** window
+      (top 20 for this streaming session).
+    Both lists show **🥇🥈🥉 medals** for 1st, 2nd and 3rd place instead of
+    a plain rank number.
+    - With **Auto next round** off (Settings), the all-time leaderboard
+      window just sits for its own configured duration, then fades away —
+      you start the next round yourself, whenever you like.
+    - With **Auto next round** on, the leaderboard window instead shows a
+      live, ticking **"Next round starts in Ns…"** countdown, and starts
+      the next round itself the moment it reaches zero.
+    How long each of these windows stays up — and how many seconds the
+    countdown counts down from — is entirely up to you; see
+    "Timing controls" right below.
     The **Live guesses** board underneath keeps everything as it was the
     whole time — the floating windows are just a highlight reel on top.
     The round button turns into **New round**; one tap starts another
     round with your current settings.
+11. **Timing controls.** In **Settings**, below Auto next round, is a
+    **Timing** section with four independent number fields (all in
+    seconds):
+    - **Answer & scorers window** — how long the "answer + top scorers"
+      floating window stays up (default 4.2s).
+    - **Leaderboard window** — how long the all-time leaderboard stays up
+      when Auto next round is **off** (default 5s).
+    - **"+points" popup** — how long each scoring pop-up stays on screen
+      (default 2.7s).
+    - **Auto-next-round countdown** — how many seconds the visible
+      countdown counts down from when Auto next round is **on**
+      (default 5s).
+    Each field has its own small **↺** reset button next to it (resets
+    just that one value back to its default), plus a **Reset all to
+    defaults** link above them that resets all four at once. Every value
+    is remembered on this phone for next time, same as your other
+    settings.
 
 ---
 

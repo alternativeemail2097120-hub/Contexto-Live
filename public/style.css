@@ -443,6 +443,59 @@ button { font-family: inherit; }
 }
 .round-tools .field-note { margin-top: 6px; }
 
+/* Timing controls (item 1) — every floating window's on-screen duration,
+   plus the auto-next-round countdown, each independently adjustable. */
+.timing-tools {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.timing-tools-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--brand-cyan);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.link-btn:active { opacity: .7; }
+.link-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.timing-input-row { display: flex; gap: 6px; }
+.timing-input-row .input { text-align: left; }
+.reset-mini-btn {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+.reset-mini-btn:active { transform: scale(.94); }
+.reset-mini-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.timing-tools .field-note { margin-top: 2px; }
+
+/* Auto-next-round countdown, shown inside the leaderboard floating window */
+.overlay-countdown {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--brand-cyan);
+}
+
 /* Leaderboard tools (item 7) — manual view + reset, always visible in Settings */
 .leaderboard-tools {
   display: flex;
@@ -694,10 +747,10 @@ button { font-family: inherit; }
   background: var(--panel-2);
   margin-bottom: 6px;
 }
-.lb-rank { flex: 0 0 22px; font-weight: 800; color: var(--muted); font-size: 13px; text-align: center; }
-.lb-row:nth-child(1) .lb-rank { color: #ffd700; }
-.lb-row:nth-child(2) .lb-rank { color: #c7cbe0; }
-.lb-row:nth-child(3) .lb-rank { color: #d99a5b; }
+.lb-rank { flex: 0 0 26px; font-weight: 800; color: var(--muted); font-size: 15px; text-align: center; }
+.lb-row.lb-medal-row:nth-child(1) { box-shadow: inset 3px 0 0 #ffd700; }
+.lb-row.lb-medal-row:nth-child(2) { box-shadow: inset 3px 0 0 #c7cbe0; }
+.lb-row.lb-medal-row:nth-child(3) { box-shadow: inset 3px 0 0 #d99a5b; }
 .lb-name { flex: 1; min-width: 0; font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lb-score { font-weight: 800; color: var(--gold); font-size: 13.5px; flex-shrink: 0; }
 .lb-empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
