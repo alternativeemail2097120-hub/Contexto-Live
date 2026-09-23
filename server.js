@@ -44,6 +44,30 @@ const TARGET_BLOCKLIST = new Set(('nigger nigga fuck fucking fucker fucked shit 
   'faggot faggots fag fags retard retarded nazi nazis hitler molest molester paedophile pedophile ' +
   'pedo incest bestiality suicide masturbate masturbation orgasm penis vagina semen sperm ejaculate').split(' '));
 
+// ------------------------------------------------------------
+// COMMON VOCABULARY — never pick a proper noun as the SECRET word (still
+// fine as a guess). The dictionary/frequency sources are plain word lists
+// with no part-of-speech tagging, so there's no fully automatic way to
+// detect "this is a name/place/brand" offline. This curated list covers
+// the categories that most often leak through a general-English frequency
+// list: days, months, nationalities/languages ("proper adjectives"),
+// religions/deities, planets, and very common first names / places /
+// brands. It's necessarily incomplete — add more, one per line, to
+// data/word-blocklist.txt (already supported below) if you spot a gap.
+// ------------------------------------------------------------
+const PROPER_NOUN_BLOCKLIST = new Set((
+  'monday tuesday wednesday thursday friday saturday sunday ' +
+  'january february march april may june july august september october november december ' +
+  'english french german spanish italian chinese japanese russian american british irish scottish ' +
+  'african asian european australian canadian mexican indian dutch swedish korean arab ' +
+  'christian muslim jewish hindu buddhist catholic jesus christ god allah buddha ' +
+  'mars venus jupiter saturn mercury neptune uranus pluto ' +
+  'john james mary robert michael david william richard joseph thomas charles mark paul george ' +
+  'america england france germany spain italy china japan russia india canada mexico australia ' +
+  'london paris tokyo york california texas google facebook twitter amazon microsoft apple ' +
+  'christmas easter halloween thanksgiving').split(' '));
+for (const w of PROPER_NOUN_BLOCKLIST) TARGET_BLOCKLIST.add(w);
+
 const TWO_LETTER_WORDS = new Set(('aa ab ad ae ag ah ai al am an ar as at aw ax ay ba be bi bo by ca ch da de do ' +
   'ea ed ee ef eh el em en er es ex fa fe fy gi go gu ha he hi hm ho id if in io is it jo ka ki la li lo ma me mi ' +
   'mm mo mu my na ne no nu od oe of oh oi ok om on oo op or os ou ow ox oy pa pe pi po qi re sh si so st ta te ti ' +
@@ -371,12 +395,15 @@ function isGoodLiveTarget(w) {
 // "speed", "ring", or "king". wink-lemmatizer already knows the many
 // English exceptions to those patterns, so it's used here instead of
 // hand-written suffix-stripping: a word is only rejected if lemmatizing
-// it as a noun OR a verb actually changes it (meaning it was inflected).
+// it as a noun, a verb, OR an adjective actually changes it (meaning it
+// was a plural, a conjugated/tensed verb, a participle, or a comparative
+// / superlative like "bigger" / "biggest").
 // ------------------------------------------------------------
 function isBaseFormWord(w) {
   try {
     if (lemmatizer.noun(w) !== w) return false;
     if (lemmatizer.verb(w) !== w) return false;
+    if (typeof lemmatizer.adjective === 'function' && lemmatizer.adjective(w) !== w) return false;
   } catch { /* never let an odd input crash target selection */ }
   return true;
 }
