@@ -1,8 +1,9 @@
 # Contexto LIVE — play a word-guessing game with your TikTok chat
 
 This is a complete, ready-to-deploy web app. Your audience guesses a secret
-word — picked at random from a dictionary of hundreds of thousands of real
-English words — by typing in TikTok LIVE chat; the app tells everyone how
+word — always picked fresh at random, from a balanced pool of common-to-
+moderately-challenging English words (never a stopword, never something
+obscure) — by typing in TikTok LIVE chat; the app tells everyone how
 "close" each guess is, just like the game Contexto. It's built to be run
 from a single Android phone while you're live: a clean, icon-only control
 bar up top, and settings tucked away in a slide-up panel so they never
@@ -107,12 +108,10 @@ address at the top of the page, like `https://contexto-live.onrender.com`
    - **Start round / End round** — always visible, right there in the bar.
 4. In **Settings**, pick a mode with the **Live / Test / Offline** switch:
    - **Live** — reads your real TikTok LIVE chat. Type your TikTok username
-     (without the `@`) and tap **Connect** once you're already LIVE. Then
-     choose a **Word length** (Any / Short / Medium / Long) and, if you
-     like, type your own **Secret word** (leave it empty for a random one
-     drawn from a dictionary of hundreds of thousands of real English
-     words — see "A very large, truly random word pool" below).
-     There's no difficulty setting — Contexto is open to any word.
+     (without the `@`) and tap **Connect** once you're already LIVE. If
+     you like, type your own **Secret word**, or leave it empty for a
+     random one — see "A balanced, always-random word pool" below.
+     There's no length or difficulty setting to pick — it's always random.
    - **Test** — rehearse with fake viewers, no TikTok needed. Pick a secret
      word (or Random), switch **Simulated chat** on or off, and choose its
      **Speed**.
@@ -201,17 +200,24 @@ Tap the bar to expand it and see:
 
 ## Notes on how the game works
 
-- **A very large, truly random word pool.** In Live mode, the secret word
-  is picked at random from the game's entire English dictionary — hundreds
-  of thousands of real words (see "A very large dictionary" below) — not
-  from a small curated list. Every round is a genuinely fresh word; two
-  broadcasters (or two rounds back to back) essentially never see the same
-  handful of words. A short blocklist keeps a small set of slurs/profanity
-  from ever being *picked* as the secret word (they're still recognized as
-  real words if someone guesses them). If a randomly picked word happens to
-  be too obscure for the ranking service to work with, the game quietly
-  tries a few more random words before ever falling back to a small backup
-  list — see the point below on the ranking service.
+- **A balanced, always-random word pool.** In Live mode, the secret word is
+  picked at random every round from a large pool of everyday-to-moderately-
+  challenging English words — never a repeat handful, and never something
+  you can set or predict. The pool comes from a real word-frequency list
+  (how often each word actually gets used), downloaded once when the
+  server starts: the handful of most common words (stopwords like "that"
+  or "with" that make dull, low-signal targets) are skipped, and the list
+  is cut off well before it reaches truly rare or technical vocabulary.
+  What's left is thousands of words that stay fair for a fast, casual
+  guesser while still giving a sharp, word-savvy viewer something to work
+  for — with no length or difficulty setting to fiddle with, because
+  there isn't one to set. A short blocklist keeps a small set of
+  slurs/profanity from ever being *picked* as the secret word (they're
+  still recognized as real words if someone guesses them). If a picked
+  word happens to be too obscure for the ranking service to work with
+  anyway, the game quietly tries a few more random words before ever
+  falling back to a small backup list — see the point below on the
+  ranking service.
 - Every mode — Live, Test, and Offline — pulls the target word's list of
   related words from a free word-similarity service (Datamuse) first,
   blending eleven relation signals (meaning, synonyms, everyday
@@ -230,10 +236,11 @@ Tap the bar to expand it and see:
 - Trivial inflections of the target (like "coffees" for "coffee") are
   filtered out of the ranking so they don't hand out a cheap near-exact
   slot right next to the real answer.
-- **No difficulty setting.** Contexto is open to any word — the secret
-  word's length is randomized every round from 4 to 12 letters (or your
-  chosen Short / Medium / Long range in Live mode), and there are no
-  letter boxes revealing how long it is.
+- **No difficulty or length setting.** The secret word's length is
+  randomized every round (roughly 4 to 12 letters) and there's nothing to
+  choose and no letter boxes revealing how long it is — the balance
+  described above comes entirely from the word-frequency pool, not from
+  any setting you control.
 - **A very large dictionary.** To decide what counts as a real English word
   (and to supply Live mode's secret-word pool above), the game merges
   several word lists: the built-in one (about 275,000

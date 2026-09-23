@@ -101,7 +101,6 @@
   const tiktokUsername = el('tiktokUsername');
   const connectBtn = el('connectBtn');
   const connNote = el('connNote');
-  const lengthSelect = el('lengthSelect');
   const liveWord = el('liveWord');
   const testWord = el('testWord');
   const autoplayToggle = el('autoplayToggle');
@@ -307,7 +306,7 @@
   };
   const STORE_KEY = 'contextoLive.settings.v3';
   const DEFAULTS = {
-    mode: 'live', username: '', length: 'any',
+    mode: 'live', username: '',
     autoplay: true, speed: 'normal', playerName: '',
     topCollapsed: false, autoNextRound: false,
   };
@@ -325,7 +324,6 @@
     if (select.value !== value) select.selectedIndex = 0;
   }
   tiktokUsername.value = settings.username;
-  setSelect(lengthSelect, settings.length);
   setSelect(speedSelect, settings.speed);
   autoplayToggle.checked = !!settings.autoplay;
   playerName.value = settings.playerName;
@@ -387,7 +385,6 @@
     saveSettings();
   });
   tiktokUsername.addEventListener('keydown', (e) => { if (e.key === 'Enter') connectBtn.click(); });
-  lengthSelect.addEventListener('change', () => { settings.length = lengthSelect.value; saveSettings(); });
 
   function syncAutoplayUi() {
     autoplayText.textContent = autoplayToggle.checked ? 'On' : 'Off';
@@ -489,7 +486,7 @@
       if (conn.status !== 'connected') {
         toast('Not connected to TikTok yet — chat guesses will only arrive once you connect.');
       }
-      send({ type: 'start_game', mode, length: settings.length, word: liveWord.value.trim() });
+      send({ type: 'start_game', mode, word: liveWord.value.trim() });
       liveWord.value = ''; // never leave the secret word sitting on screen
     } else if (mode === 'test') {
       send({ type: 'start_game', mode, word: testWord.value, autoplay: settings.autoplay, speed: settings.speed });

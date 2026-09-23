@@ -298,7 +298,7 @@ function pushState() { broadcast({ type: 'state', state: getPublicState() }); }
 const WORD_BANK = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'words.json'), 'utf8'));
 const FALLBACK_PUZZLES = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'fallback-puzzles.json'), 'utf8'));
 // Small curated pool, used only when the full dictionary isn't ready yet
-// (the first instant after a cold start) — see pickWordByRandomLength().
+// (the first instant after a cold start) — see pickBalancedTargetWord().
 const ALL_LIVE_WORDS = Array.from(new Set([...(WORD_BANK.easy || []), ...(WORD_BANK.medium || []), ...(WORD_BANK.hard || [])]));
 // Words the host can pick from in Test and Offline mode (built-in, no internet needed).
 const WORD_CHOICES = Object.keys(FALLBACK_PUZZLES).sort();
@@ -308,25 +308,13 @@ function normalize(w) {
 }
 function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
-// The secret word's length is randomized every round (4-12 letters) so
-// it's never confined to one length, and is never revealed up front —
-// the UI has nothing that hints at how many letters it is.
-const TARGET_LENGTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12];
-
-// Host-selectable length ranges (Live mode). "any" keeps the full 4-12 spread.
-const LENGTH_RANGES = { any: [4, 12], short: [4, 6], medium: [7, 9], long: [10, 12] };
-
-// ------------------------------------------------------------
-// LIVE-MODE SECRET WORD POOL
-// Live mode's secret word is picked at random from the ENTIRE English
-// dictionary loaded above (hundreds of thousands of legitimate words) —
-// never from a small curated list — so no two broadcasters (and no two
-// rounds) are stuck seeing the same handful of words. The pool is bucketed
-// by length once, then re-bucketed whenever the dictionary grows (e.g. once
-// the remote word lists finish downloading a few seconds after startup).
-// ------------------------------------------------------------
-const livePoolByLength = new Map(); // length -> string[]
-let livePoolBuiltFromSize = 0;
+// The secret word's length is never fixed or user-selectable — it can be
+// anywhere from 4 to 12 letters, and the UI never hints at how many
+// letters it is. This range is purely a sanity bound (very short words are
+// mostly function words / too easy to brute-force; very long words are
+// mostly obscure compounds), not a difficulty setting.
+const TARGET_LENGTHS_MIN = 4;
+const TARGET_LENGTHS_MAX = 12;
 
 function isGoodLiveTarget(w) {
   // Real, single, unbroken word; never something we've explicitly excluded
@@ -334,50 +322,114 @@ function isGoodLiveTarget(w) {
   return !TARGET_BLOCKLIST.has(w);
 }
 
-function rebuildLiveWordPool() {
-  livePoolByLength.clear();
-  for (const len of TARGET_LENGTHS) livePoolByLength.set(len, []);
-  for (const w of ENGLISH_WORDS) {
-    const len = w.length;
-    if (len < 4 || len > 12) continue;
+// ------------------------------------------------------------
+// LIVE-MODE SECRET WORD POOL — BALANCED DIFFICULTY, ALWAYS RANDOM
+//
+// Picking the target from the entire loaded dictionary (400k+ words)
+// meant it could land on genuinely obscure or technical words that only
+// happen to clear the "150 semantic neighbors" bar in buildSemanticCore().
+// That made rounds swing wildly between "too easy" and "unfairly hard".
+//
+// Instead, the target is drawn from a word-frequency list (how often each
+// word is actually used in real English), downloaded once at startup —
+// the same pattern already used for the dictionary itself, see
+// REMOTE_DICTIONARIES above. Words are kept only if they fall in a middle
+// frequency band:
+//   - the very top of the frequency list (mostly "the/of/have/with"-style
+//     function words) is skipped — those make dull, low-signal targets
+//   - anything past a generous cutoff further down the list is dropped —
+//     that's where genuinely rare/technical words live
+// What's left is a large pool (thousands of words) that skews toward
+// everyday nouns/verbs/adjectives but still reaches into less common,
+// genuinely challenging vocabulary — enough range for a fast, casual
+// guesser and a sharp, word-savvy one to both have a fair round, without
+// a difficulty knob and without ever repeating the same tiny shortlist.
+// No length filter is applied beyond the 4-12 sanity bound above — the
+// pool is never split or chosen by length.
+// ------------------------------------------------------------
+const FREQUENCY_LIST_URL = 'https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/en/en_50k.txt';
+const FREQ_CACHE_FILE = path.join(os.tmpdir(), 'contexto-frequency-words.v1.txt');
+// Skip the most frequent entries (function words, "have/that/with/from"
+// style words with little semantic content) and stop well short of the
+// tail (the rarest, least-recognizable end of the list).
+const FREQ_BAND_SKIP_TOP = 300;
+const FREQ_BAND_MAX_RANK = 15000;
+
+let frequencyOrder = [];       // words, most-to-least frequent, raw from the source
+let balancedWordPool = [];     // filtered + banded pool actually drawn from
+let balancedPoolBuiltFromSize = 0;
+let balancedPoolBuiltFromFreqLen = 0;
+
+function rebuildBalancedWordPool() {
+  const source = frequencyOrder.length ? frequencyOrder : [];
+  const banded = source.slice(FREQ_BAND_SKIP_TOP, FREQ_BAND_MAX_RANK);
+  const pool = [];
+  for (const w of banded) {
+    if (w.length < TARGET_LENGTHS_MIN || w.length > TARGET_LENGTHS_MAX) continue;
     if (!isGoodLiveTarget(w)) continue;
-    livePoolByLength.get(len).push(w);
+    // Keep only words we can actually rank against (present in the loaded
+    // dictionary) — filters out any stray noise in the frequency source.
+    if (ENGLISH_WORDS.size && !ENGLISH_WORDS.has(w)) continue;
+    pool.push(w);
   }
-  livePoolBuiltFromSize = ENGLISH_WORDS.size;
+  balancedWordPool = pool;
+  balancedPoolBuiltFromSize = ENGLISH_WORDS.size;
+  balancedPoolBuiltFromFreqLen = frequencyOrder.length;
 }
 
-// Rebuild the pool automatically the first time it's needed, and again any
-// time the dictionary has grown since (e.g. after the remote word lists finish
-// downloading in the background).
-function liveWordPool(len) {
-  if (livePoolBuiltFromSize !== ENGLISH_WORDS.size) rebuildLiveWordPool();
-  return livePoolByLength.get(len) || [];
+function currentBalancedWordPool() {
+  if (balancedPoolBuiltFromSize !== ENGLISH_WORDS.size || balancedPoolBuiltFromFreqLen !== frequencyOrder.length) {
+    rebuildBalancedWordPool();
+  }
+  return balancedWordPool;
 }
 
-function pickWordByRandomLength(lengthKey) {
-  const [lo, hi] = LENGTH_RANGES[lengthKey] || LENGTH_RANGES.any;
-  const validLens = TARGET_LENGTHS.filter((l) => l >= lo && l <= hi);
-  const lens = validLens.length ? validLens : TARGET_LENGTHS;
-
-  // Prefer the full dictionary pool — this is what makes every round a
-  // genuinely random word from the whole English language.
-  if (ENGLISH_WORDS.size > 0) {
-    const targetLen = pickRandom(lens);
-    let candidates = liveWordPool(targetLen);
-    if (!candidates.length) {
-      // Nothing of that exact length: fall back to the whole chosen range.
-      candidates = lens.flatMap((l) => liveWordPool(l));
-    }
-    if (candidates.length) return pickRandom(candidates);
+function parseFrequencyList(text) {
+  const words = [];
+  for (const line of text.split(/\r?\n/)) {
+    const raw = line.trim();
+    if (!raw) continue;
+    // Lines look like "word 12345678" (word, then a frequency count).
+    const w = raw.split(/\s+/)[0].toLowerCase();
+    if (!/^[a-z]+$/.test(w)) continue;
+    words.push(w);
   }
+  return words;
+}
 
-  // Extremely unlikely fallback: dictionary somehow empty. Use the small
-  // curated list so Live mode still works.
-  const targetLen = pickRandom(lens);
-  let candidates = ALL_LIVE_WORDS.filter((w) => normalize(w).length === targetLen);
-  if (!candidates.length) {
-    candidates = ALL_LIVE_WORDS.filter((w) => { const l = normalize(w).length; return l >= lo && l <= hi; });
+async function loadFrequencyList() {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 60000);
+    const res = await fetch(FREQUENCY_LIST_URL, { signal: ctrl.signal });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    clearTimeout(timer);
+    frequencyOrder = parseFrequencyList(text);
+    try { fs.writeFileSync(FREQ_CACHE_FILE, frequencyOrder.join('\n')); } catch { /* read-only disk: skip */ }
+    console.log(`[frequency] loaded ${frequencyOrder.length.toLocaleString('en-US')} ranked words for balanced word selection`);
+  } catch (err) {
+    console.warn(`[frequency] could not download frequency list: ${err.message}`);
+    try {
+      if (fs.existsSync(FREQ_CACHE_FILE)) {
+        frequencyOrder = fs.readFileSync(FREQ_CACHE_FILE, 'utf8').split(/\r?\n/).filter(Boolean);
+        console.log(`[frequency] using remembered download: ${frequencyOrder.length.toLocaleString('en-US')} ranked words`);
+      }
+    } catch { /* ignore an unreadable cache */ }
   }
+  rebuildBalancedWordPool();
+  pushState();
+}
+
+function pickBalancedTargetWord() {
+  const pool = currentBalancedWordPool();
+  if (pool.length) return pickRandom(pool);
+
+  // Frequency list unavailable (first instant after a cold start, or the
+  // download failed with no cached copy) and dictionary not filtered yet:
+  // fall back to the small curated list so a round can still start.
+  const lo = TARGET_LENGTHS_MIN, hi = TARGET_LENGTHS_MAX;
+  let candidates = ALL_LIVE_WORDS.filter((w) => { const l = normalize(w).length; return l >= lo && l <= hi; });
   if (!candidates.length) candidates = ALL_LIVE_WORDS;
   return pickRandom(candidates);
 }
@@ -660,7 +712,7 @@ async function startGame(mode, opts = {}) {
       const RANDOM_ATTEMPTS = 15;
       let lastErr = null;
       for (let attempt = 1; attempt <= RANDOM_ATTEMPTS && !puzzle; attempt++) {
-        const word = pickWordByRandomLength(mode === 'live' ? opts.length : 'any');
+        const word = pickBalancedTargetWord();
         try {
           puzzle = await buildPuzzleFromDatamuse(word);
         } catch (err) {
@@ -1155,7 +1207,6 @@ function handleClientMessage(msg, ws) {
     case 'start_game':
       startGame(MODES.includes(msg.mode) ? msg.mode : 'live', {
         word: msg.word,
-        length: msg.length,
         autoplay: !!msg.autoplay,
         speed: msg.speed,
       });
@@ -1200,4 +1251,5 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`TikTok Contexto server running on port ${PORT}`);
   loadRemoteDictionaries().catch((err) => console.error('[dictionary] unexpected error:', err));
+  loadFrequencyList().catch((err) => console.error('[frequency] unexpected error:', err));
 });
