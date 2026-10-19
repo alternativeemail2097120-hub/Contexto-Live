@@ -1,6 +1,9 @@
 # Contexto LIVE — play a word-guessing game with your TikTok chat
 
 > **Latest changes**
+> - **New rank colours:** #1 green · #2–10 blue · #11–50 purple · #51–100
+>   pink · #101–500 orange · #501+ red (the old scale list further down in
+>   this README is out of date).
 > - **Save & Apply (and Save & Apply as Default) now start the game
 >   automatically** — no need to press Start round / New round. (If a round is
 >   running, it restarts with the new settings.) Auto next round is now **on

@@ -785,22 +785,24 @@
 
   // ============================================================
   // Rank -> authentic Contexto color tiers
-  // (1 exact / 2-50 dark green / 51-300 green / 301-1500 orange / 1501+ red)
+  // (1 green / 2-10 blue / 11-50 purple / 51-100 pink / 101-500 orange / 501+ red)
   // ============================================================
   function tierClass(rank) {
     if (rank == null) return 'rank-red';
-    if (rank === 1) return 'rank-exact';
-    if (rank <= 50) return 'rank-dark-green';
-    if (rank <= 300) return 'rank-green';
-    if (rank <= 1500) return 'rank-orange';
+    if (rank === 1) return 'rank-exact';      // green
+    if (rank <= 10) return 'rank-blue';
+    if (rank <= 50) return 'rank-purple';
+    if (rank <= 100) return 'rank-pink';
+    if (rank <= 500) return 'rank-orange';
     return 'rank-red';
   }
   function tierColor(rank) {
     if (rank == null) return 'var(--tier-red)';
     if (rank === 1) return 'var(--tier-dark-green)';
-    if (rank <= 50) return 'var(--tier-dark-green)';
-    if (rank <= 300) return 'var(--tier-green)';
-    if (rank <= 1500) return 'var(--tier-orange)';
+    if (rank <= 10) return 'var(--tier-blue)';
+    if (rank <= 50) return 'var(--tier-purple)';
+    if (rank <= 100) return 'var(--tier-pink)';
+    if (rank <= 500) return 'var(--tier-orange)';
     return 'var(--tier-red)';
   }
   function rankLabel(rank) {

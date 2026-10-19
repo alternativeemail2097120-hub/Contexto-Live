@@ -21,6 +21,9 @@
   --tier-dark-green: #16a34a;
   --tier-green: #4ade80;
   --tier-orange: #fb923c;
+  --tier-blue: #4da3ff;
+  --tier-purple: #a970ff;
+  --tier-pink: #ff5fa8;
   --tier-red: #f43f5e;
 
   /* Mode accents */
@@ -752,6 +755,9 @@ button { font-family: inherit; }
 .guess-rank { z-index: 1; font-size: 11.5px; font-weight: 800; white-space: nowrap; padding: 2px 8px; border-radius: 999px; }
 
 .rank-exact { background: color-mix(in srgb, var(--tier-dark-green) 30%, transparent); color: var(--tier-dark-green); }
+.rank-blue { background: color-mix(in srgb, var(--tier-blue) 20%, transparent); color: var(--tier-blue); }
+.rank-purple { background: color-mix(in srgb, var(--tier-purple) 20%, transparent); color: var(--tier-purple); }
+.rank-pink { background: color-mix(in srgb, var(--tier-pink) 20%, transparent); color: var(--tier-pink); }
 .rank-dark-green { background: color-mix(in srgb, var(--tier-dark-green) 22%, transparent); color: var(--tier-dark-green); }
 .rank-green { background: color-mix(in srgb, var(--tier-green) 16%, transparent); color: var(--tier-green); }
 .rank-orange { background: color-mix(in srgb, var(--tier-orange) 16%, transparent); color: var(--tier-orange); }
@@ -932,4 +938,10 @@ button { font-family: inherit; }
 @media (max-width: 380px) {
   .wordmark { font-size: 26px; }
   .fields { grid-template-columns: 1fr; }
+}
+
+/* Rank tier colors on the light themes (darker for contrast) */
+:root[data-theme="cream"], :root[data-theme="sky"], :root[data-theme="meadow"],
+:root[data-theme="blossom"], :root[data-theme="lavender"], :root[data-theme="honey"] {
+  --tier-blue: #1d63c4; --tier-purple: #7a3fc2; --tier-pink: #c4287c;
 }
