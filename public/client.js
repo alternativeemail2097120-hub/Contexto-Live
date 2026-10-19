@@ -796,7 +796,7 @@
     return 'var(--tier-red)';
   }
   function rankLabel(rank) {
-    if (rank == null) return 'not a word';
+    if (rank == null) return 'unknown word';
     if (rank === 1) return '🎯 EXACT';
     return '#' + rank;
   }
@@ -1273,6 +1273,14 @@
       if (d.status === 'loading') diagDict.textContent = `Loading… ${n} so far`;
       else if (d.total < d.target) { diagDict.textContent = `${n} words (under ${d.target.toLocaleString('en-US')})`; diagDict.classList.add('warn'); }
       else diagDict.textContent = `${n} words`;
+    }
+    if (state.engine) {
+      const e = state.engine;
+      let label;
+      if (e.embeddings === 'ready') label = `word-vector model (${e.vocab.toLocaleString('en-US')} words)`;
+      else if (e.embeddings === 'loading') label = 'loading word-vector model… (backup ranking meanwhile)';
+      else label = 'backup ranking (word-vector model unavailable)';
+      diagDict.textContent += ' · Ranking: ' + label;
     }
     if (state.diagnostics.rawSamples && state.diagnostics.rawSamples.length) {
       diagRaw.textContent = state.diagnostics.rawSamples.join('\n\n---\n\n');

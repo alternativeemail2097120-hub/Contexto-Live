@@ -14,6 +14,8 @@ const fs = require('fs');
 const os = require('os');
 const { WebSocketServer } = require('ws');
 const lemmatizer = require('wink-lemmatizer');
+const { createEmbeddings } = require('./lib/embeddings');
+const embeddings = createEmbeddings((m) => console.log(m));
 
 // ------------------------------------------------------------
 // ENGLISH DICTIONARY
@@ -309,6 +311,8 @@ state.defaultSettings = loadDefaultSettings();
 
 const MODES = ['live', 'test', 'offline'];
 let rankMap = new Map();
+let currentEngine = null;   // 'embeddings' | 'datamuse' | 'fallback'
+let closedVocab = false;    // true: only words in the ranked vocabulary are valid guesses
 let orderedWords = [];
 let testAutoplayTimer = null;
 
@@ -330,6 +334,7 @@ function getPublicState() {
     autoplay: state.autoplay,
     diagnostics: state.diagnostics,
     dictionary,
+    engine: { name: currentEngine, embeddings: embeddings.status, source: embeddings.source, vocab: embeddings.words.length, error: embeddings.error },
     wordChoices: WORD_CHOICES,
     leaderboardTop: topLeaderboard(),
     defaultSettings: state.defaultSettings,
@@ -363,7 +368,11 @@ const FALLBACK_PUZZLES = JSON.parse(fs.readFileSync(path.join(__dirname, 'data',
 // (the first instant after a cold start) — see pickBalancedTargetWord().
 const ALL_LIVE_WORDS = Array.from(new Set([...(WORD_BANK.easy || []), ...(WORD_BANK.medium || []), ...(WORD_BANK.hard || [])]));
 // Words the host can pick from in Test and Offline mode (built-in, no internet needed).
-const WORD_CHOICES = Object.keys(FALLBACK_PUZZLES).sort();
+// Curated answer list: common, everyday, root-form words (like the real Contexto's
+// daily answers). Every mode draws its random secret word from here.
+let ANSWER_WORDS = [];
+try { ANSWER_WORDS = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'answers.json'), 'utf8')); } catch (e) { console.warn('[answers] could not read data/answers.json:', e.message); }
+const WORD_CHOICES = Array.from(new Set([...ANSWER_WORDS, ...Object.keys(FALLBACK_PUZZLES)])).sort();
 
 function normalize(w) {
   return (w || '').toLowerCase().trim().replace(/[^a-z]/g, '');
@@ -552,18 +561,19 @@ async function loadFrequencyList() {
   pushState();
 }
 
+const recentTargets = [];
 function pickBalancedTargetWord() {
-  const pool = currentBalancedWordPool();
-  if (pool.length) return pickRandom(pool);
-
-  // Frequency list unavailable (first instant after a cold start, or the
-  // download failed with no cached copy) and dictionary not filtered yet:
-  // fall back to the small curated list so a round can always start.
-  const lo = TARGET_LENGTHS_MIN, hi = TARGET_LENGTHS_MAX;
-  let candidates = ALL_LIVE_WORDS.filter((w) => { const l = normalize(w).length; return l >= lo && l <= hi; });
-  if (!candidates.length) candidates = ALL_LIVE_WORDS;
-  candidates = baseFormOnly(candidates);
-  return pickRandom(candidates);
+  // Secret words come from the curated answer list (common, everyday words),
+  // never repeating the last ~150 rounds. When the embedding model is loaded,
+  // the word must also exist in its vocabulary.
+  let pool = ANSWER_WORDS.filter((w) => isGoodLiveTarget(w) && isBaseFormWord(w));
+  if (embeddings.status === 'ready') pool = pool.filter((w) => embeddings.has(w));
+  if (!pool.length) pool = ALL_LIVE_WORDS.length ? ALL_LIVE_WORDS : Object.keys(FALLBACK_PUZZLES);
+  const fresh = pool.filter((w) => !recentTargets.includes(w));
+  const w = pickRandom(fresh.length ? fresh : pool);
+  recentTargets.push(w);
+  if (recentTargets.length > 150) recentTargets.shift();
+  return w;
 }
 
 // ------------------------------------------------------------
@@ -663,7 +673,7 @@ async function fetchDatamuseRelation(code, word, max) {
 // relations outranks one that only appears once, even far down a single
 // list. This is the "utmost professional" approximation of a full
 // semantic-similarity model available without training/hosting one.
-async function buildSemanticCore(target) {
+async function buildSemanticCore(target) { // resolves to Map(word -> score)
   const codes = Object.keys(RELATION_WEIGHTS);
   const settled = await Promise.allSettled(codes.map((code) => fetchDatamuseRelation(code, target, RELATION_MAX)));
 
@@ -699,9 +709,7 @@ async function buildSemanticCore(target) {
   // words like "coffee" or "ocean" clear it by a wide margin.
   if (!anyOk || fused.size < 150) throw new Error('Not enough semantic neighbors found for "' + target + '"');
 
-  return Array.from(fused.entries())
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([w]) => w);
+  return fused; // Map word -> fused score
 }
 
 // Skips near-duplicate inflections of the target (plurals, -ing/-ed forms)
@@ -715,97 +723,89 @@ function isTrivialVariant(target, candidate) {
   return false;
 }
 
+// ------------------------------------------------------------
+// Datamuse backup engine (used only if the embedding model isn't loaded).
+// 1) fuse 11 relation lists for the target, 2) expand: ask Datamuse for the
+// neighbours of the target's closest neighbours and add their votes, which
+// stretches the meaningful ranking from ~1,000 to several thousand words.
+// Everything past that gets a stable pseudo-random rank (never spelling-based).
+// ------------------------------------------------------------
+const EXPAND_SEEDS = 30;
+async function expandSemanticCore(target, fused) {
+  const seeds = Array.from(fused.entries()).sort((a, b) => b[1] - a[1]).slice(0, EXPAND_SEEDS).map(([w]) => w);
+  const extra = new Map();
+  for (let i = 0; i < seeds.length; i += 10) {
+    const batch = seeds.slice(i, i + 10);
+    const results = await Promise.allSettled(batch.map((w) => fetchDatamuseRelation('ml', w, 600)));
+    results.forEach((res, k) => {
+      if (res.status !== 'fulfilled' || !Array.isArray(res.value)) return;
+      const seedW = 1 / (1 + (i + k) * 0.08);
+      res.value.forEach((item, r) => {
+        if (/[\s-]/.test(item.word)) return;
+        const w = normalize(item.word);
+        if (!w || w === target || TARGET_BLOCKLIST.has(w) || !ENGLISH_WORDS.has(w)) return;
+        extra.set(w, (extra.get(w) || 0) + 0.12 * seedW / (RRF_K + r + 1));
+      });
+    });
+  }
+  const merged = new Map(fused);
+  for (const [w, v] of extra) merged.set(w, (merged.get(w) || 0) + v * commonnessMultiplier(w));
+  return merged;
+}
+
+// Suffix forms of the target (plural, -ed, -ing...) belong right next to it,
+// exactly as in the real game ("dogs" is a very close #2-#4 for "dog").
+function inflectionsOf(target) {
+  const cands = [target + 's', target + 'es', target + 'ed', target + 'd', target + 'ing', target.replace(/y$/, 'ies'), target.replace(/e$/, 'ing')];
+  return Array.from(new Set(cands)).filter((w) => w !== target && ENGLISH_WORDS.has(w));
+}
+
 async function buildPuzzleFromDatamuse(word) {
   const target = normalize(word);
-  const core = await buildSemanticCore(target);
-  let order = [target, ...core];
-  const coreSet = new Set(order);
-  order = extendOrderWithLexicalAffinity(target, order, coreSet, EXTENDED_RANK_LIMIT + 1);
-  const map = new Map();
-  order.forEach((w, i) => map.set(w, i + 1));
-  return { target, map, order };
+  let fused = await buildSemanticCore(target);
+  try { fused = await expandSemanticCore(target, fused); } catch (e) { console.warn('[datamuse] expansion skipped:', e.message); }
+  const core = Array.from(fused.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([w]) => w);
+  const infl = inflectionsOf(target).filter((w) => !fused.has(w));
+  const order = [target, ...infl.slice(0, 3), ...core.filter((w) => !infl.includes(w))];
+  return finalizePuzzle(target, order, 'datamuse');
 }
 
-// ---- Stage 2 helpers: bigram-overlap lexical affinity (no network) ----
-function bigramIndex(c1, c2) { return (c1 - 97) * 26 + (c2 - 97); }
-
-function bigramProfile(word) {
-  const hist = new Uint8Array(676);
-  let count = 0;
-  for (let i = 0; i < word.length - 1; i++) {
-    const c1 = word.charCodeAt(i) - 97, c2 = word.charCodeAt(i + 1) - 97;
-    if (c1 < 0 || c1 > 25 || c2 < 0 || c2 > 25) continue;
-    const idx = bigramIndex(c1, c2);
-    if (hist[idx] < 255) hist[idx]++;
-    count++;
-  }
-  return { hist, count };
-}
-
-// Deterministic, dependency-free stand-in for a semantic-distance model:
-// scores a word by orthographic (bigram) overlap with the target, tempered
-// by shared prefix length and how close the two words are in length. It's
-// a lexical proxy rather than true semantics, but it is stable (the same
-// word always lands on the same rank), cheap enough to run over the whole
-// dictionary once per round, and needs no network — which is exactly what
-// lets Test/Offline mode share Live mode's full vocabulary (see item 6).
-function lexicalAffinityScore(target, targetProfile, word) {
-  let overlap = 0;
-  let wordCount = 0;
-  for (let i = 0; i < word.length - 1; i++) {
-    const c1 = word.charCodeAt(i) - 97, c2 = word.charCodeAt(i + 1) - 97;
-    if (c1 < 0 || c1 > 25 || c2 < 0 || c2 > 25) continue;
-    wordCount++;
-    if (targetProfile.hist[bigramIndex(c1, c2)] > 0) overlap++;
-  }
-  const union = targetProfile.count + wordCount - overlap;
-  const dice = union > 0 ? overlap / union : 0;
-  let prefix = 0;
-  const minLen = Math.min(word.length, target.length);
-  while (prefix < minLen && word[prefix] === target[prefix]) prefix++;
-  const lenPenalty = Math.abs(word.length - target.length) * 0.015;
-  return dice + prefix * 0.03 - lenPenalty;
-}
-
-// Fills in the rest of the loaded dictionary (skipping whatever's already
-// in coreOrder), scoring and sorting every remaining word by lexical
-// affinity to the target, up to `limit` total ranked words (see
-// EXTENDED_RANK_LIMIT above — in practice this means the whole
-// dictionary). So an off-topic-but-real guess always lands on a real,
-// stable, deterministically-computed rank instead of a dead end — or
-// worse, a rank that depends on who happened to guess it first.
-function extendOrderWithLexicalAffinity(target, coreOrder, coreSet, limit) {
-  const room = limit - coreOrder.length;
-  if (room <= 0 || !ENGLISH_WORDS.size) return coreOrder;
-  const targetProfile = bigramProfile(target);
-  const scored = [];
-  for (const w of ENGLISH_WORDS) {
-    if (coreSet.has(w)) continue;
-    scored.push([w, lexicalAffinityScore(target, targetProfile, w)]);
-  }
-  scored.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  const extra = scored.length > room ? scored.slice(0, room) : scored;
-  return coreOrder.concat(extra.map(([w]) => w));
-}
-
-// The fully-offline fallback path (Stage 2 only — no network), used when
-// Datamuse can't be reached. Prefers the hand-curated word list when one
-// exists for this target (a slightly richer, hand-picked near-neighborhood),
-// then always extends with the offline lexical-affinity engine so ANY real
-// word — not just the ~15 curated targets — gets a full, deep, deterministic
-// ranking, even though it's an orthographic approximation rather than a
-// semantic one.
 function buildPuzzleFromFallback(word) {
   const target = normalize(word);
   if (!target) return null;
   const curated = FALLBACK_PUZZLES[target];
-  let order = curated ? curated.map(normalize).filter((w) => w && w !== target) : [];
-  order = [target, ...order];
-  const coreSet = new Set(order);
-  order = extendOrderWithLexicalAffinity(target, order, coreSet, EXTENDED_RANK_LIMIT + 1);
+  const list = curated ? curated.map(normalize).filter((w) => w && w !== target) : [];
+  return finalizePuzzle(target, [target, ...list], 'fallback');
+}
+
+// Real embedding ranking: the whole vocabulary, ordered by cosine similarity.
+function buildPuzzleFromEmbeddings(word) {
+  const target = normalize(word);
+  const order = embeddings.rankAll(target);
+  if (!order) throw new Error('"' + target + '" is not in the word-vector vocabulary.');
   const map = new Map();
   order.forEach((w, i) => map.set(w, i + 1));
-  return { target, map, order };
+  return { target, map, order, engine: 'embeddings', closed: true };
+}
+
+function finalizePuzzle(target, order, engine) {
+  const seen = new Set();
+  order = order.filter((w) => (seen.has(w) ? false : (seen.add(w), true)));
+  const map = new Map();
+  order.forEach((w, i) => map.set(w, i + 1));
+  return { target, map, order, engine, closed: false, tailSeed: target };
+}
+
+// Words the ranked list doesn't cover: a stable pseudo-random rank far from
+// the target (past the ranked list), identical for every guesser and guess order.
+function fnv(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function tailRank(word) {
+  const base = Math.max(orderedWords.length, 1500);
+  return base + 1 + (fnv(word + '|' + state.game.targetWord) % 40000);
 }
 
 // ============================================================
@@ -830,34 +830,30 @@ async function startGame(mode, opts = {}) {
     // with no network at all — they just won't rank as richly in that
     // rare case.
     if (opts.word && custom.length < 3) throw new Error('The secret word needs at least 3 letters.');
+    const useEmb = embeddings.status === 'ready';
     if (custom) {
-      try {
-        puzzle = await buildPuzzleFromDatamuse(custom);
-      } catch (err) {
-        console.error('[DATAMUSE FAILED]', err);
-        if (!FALLBACK_PUZZLES[custom] && !ENGLISH_WORDS.has(custom)) {
-          throw new Error(`Could not build a ranking for "${custom}". Check the spelling, or leave the secret word empty for a random one.`);
-        }
-        broadcast({ type: 'server_error', message: 'Could not reach the word-similarity service, using the offline backup ranking instead.' });
-        puzzle = buildPuzzleFromFallback(custom);
-      }
-    } else {
-      // Random word: try several fresh random picks from the full
-      // dictionary before giving up — an obscure pick that Datamuse can't
-      // rank well shouldn't mean settling for the small curated list. Raised
-      // from 6 to 15 now that a "good" target requires a much richer
-      // semantic core (see the 150-word floor above), so more attempts are
-      // typically needed to land on a common, well-connected word instead
-      // of an obscure one.
-      const RANDOM_ATTEMPTS = 15;
-      let lastErr = null;
-      for (let attempt = 1; attempt <= RANDOM_ATTEMPTS && !puzzle; attempt++) {
-        const word = pickBalancedTargetWord();
+      if (useEmb && embeddings.has(custom)) {
+        puzzle = buildPuzzleFromEmbeddings(custom);
+      } else if (useEmb) {
+        throw new Error('"' + custom + '" is not in the game\'s word vocabulary. Try a more common word, or leave it empty for a random one.');
+      } else {
         try {
-          puzzle = await buildPuzzleFromDatamuse(word);
+          puzzle = await buildPuzzleFromDatamuse(custom);
         } catch (err) {
-          lastErr = err;
+          console.error('[DATAMUSE FAILED]', err);
+          if (!FALLBACK_PUZZLES[custom] && !ENGLISH_WORDS.has(custom)) {
+            throw new Error(`Could not build a ranking for "${custom}". Check the spelling, or leave the secret word empty for a random one.`);
+          }
+          broadcast({ type: 'server_error', message: 'Could not reach the word-similarity service, using the offline backup ranking instead.' });
+          puzzle = buildPuzzleFromFallback(custom);
         }
+      }
+    } else if (useEmb) {
+      puzzle = buildPuzzleFromEmbeddings(pickBalancedTargetWord());
+    } else {
+      let lastErr = null;
+      for (let attempt = 1; attempt <= 8 && !puzzle; attempt++) {
+        try { puzzle = await buildPuzzleFromDatamuse(pickBalancedTargetWord()); } catch (err) { lastErr = err; }
       }
       if (!puzzle) {
         console.error('[DATAMUSE FAILED after retries]', lastErr);
@@ -873,6 +869,8 @@ async function startGame(mode, opts = {}) {
 
     rankMap = puzzle.map;
     orderedWords = puzzle.order;
+    currentEngine = puzzle.engine;
+    closedVocab = !!puzzle.closed;
 
     const g = state.game;
     state.mode = mode;
@@ -990,12 +988,8 @@ function ensureLeaderboardEntry(user, avatar) {
 //  - not a recognized English word at all -> null ("not a word")
 function resolveRank(word) {
   if (rankMap.has(word)) return rankMap.get(word);
-  if (state.game.extendedRankMap.has(word)) return state.game.extendedRankMap.get(word);
-  if (ENGLISH_WORDS.has(word)) {
-    const rank = state.game.nextExtendedRank++;
-    state.game.extendedRankMap.set(word, rank);
-    return rank;
-  }
+  if (closedVocab) return null;              // embeddings: unknown word, like the real game
+  if (ENGLISH_WORDS.has(word)) return tailRank(word);
   return null;
 }
 
@@ -1331,7 +1325,16 @@ function autoplayTick() {
   }
   state.autoplay.ticks = (state.autoplay.ticks || 0) + 1;
   // Prefer words nobody has guessed yet so the board keeps filling up.
-  const fresh = orderedWords.slice(1, 60).filter((w) => !state.game.allGuessedWords.has(w));
+  // Bots guess like people: mostly far-off words early, closer ones as the round goes on.
+  const maxR = Math.min(orderedWords.length, 8000);
+  const closeness = Math.min(1, state.autoplay.ticks / 40);
+  const fresh = [];
+  for (let k = 0; k < 6; k++) {
+    const hi = Math.log(maxR), lo = Math.log(2);
+    const r = Math.floor(Math.exp(lo + (hi - lo) * Math.pow(Math.random(), 1 + closeness * 2.5)));
+    const w = orderedWords[Math.max(1, Math.min(maxR - 1, r))];
+    if (w && !state.game.allGuessedWords.has(w)) fresh.push(w);
+  }
   const winChance = Math.min(1, AUTOPLAY_BASE_WIN_CHANCE + state.autoplay.ticks * AUTOPLAY_WIN_CHANCE_STEP);
   const forceWin = state.autoplay.ticks >= AUTOPLAY_MAX_TICKS_BEFORE_FORCE;
   const guess = (!fresh.length || forceWin || Math.random() < winChance) ? state.game.targetWord : pickRandom(fresh);
@@ -1425,5 +1428,6 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`TikTok Contexto server running on port ${PORT}`);
   loadRemoteDictionaries().catch((err) => console.error('[dictionary] unexpected error:', err));
+  embeddings.load((w) => ENGLISH_WORDS.has(w)).then(() => pushState()).catch((err) => console.error('[embeddings] unexpected error:', err));
   loadFrequencyList().catch((err) => console.error('[frequency] unexpected error:', err));
 });

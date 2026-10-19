@@ -1,27 +1,31 @@
 # Contexto LIVE — play a word-guessing game with your TikTok chat
 
-> **What's new in this version**
-> - **Secret words are now always root words (lemmas)** — no plurals, no
->   verb tenses/conjugations, no "-ing"/"-ed"/"-s" participle endings.
->   Only common, everyday vocabulary already in its plain dictionary form
->   can be picked as the answer (e.g. "jump", never "jumping" or "jumps").
-> - **Test mode always finishes on its own** — simulated chat's chance of
->   landing on the secret word climbs every few seconds, so a Test round
->   guarantees a winner instead of possibly running a long time.
-> - **The "+N points" popup no longer shoves the board around** — its
->   spot on screen is now reserved, so "Live guesses" stays put.
-> - **Top scorers & the leaderboard show everyone** — no more 10-person
->   cutoff after a round, and the all-time leaderboard sends its full
->   list (still shows the top 20 at a glance, scroll for the rest).
-> - **Save & Apply / Save & Apply as Default** — two new buttons at the
->   bottom of Settings. The first confirms your settings on this device;
->   the second makes them the ones **every** device starts with — open the
->   game anywhere and it's already set up the way you like it.
-> - **A visible countdown to the next round** — now shown right on the
->   round button itself ("New round (5s)"), not just in the leaderboard
->   popup.
+> **What's new in this version (rebuilt to behave like the real Contexto)**
+> - **Real word-vector ranking.** On startup the server loads a pre-trained
+>   GloVe word-vector model (about 70,000 common English words) and ranks the
+>   *whole vocabulary* by meaning-distance to the secret word. #1 is the
+>   secret word, #2 its closest neighbour, and so on — fixed for the round and
+>   independent of guess order. This replaces the old mix of Datamuse lists
+>   plus spelling-similarity, which is what made ranks feel random.
+> - **Unknown words are rejected like the real game.** Words outside the
+>   vocabulary show "unknown word" and don't add a row.
+> - **Plurals and word forms rank naturally** (e.g. "dogs" is right next to "dog").
+> - **Curated answer list** (`data/answers.json`, about 1,000 everyday root
+>   words — animals, food, places, objects, jobs, verbs, adjectives). Every mode
+>   picks from it and never repeats within ~150 rounds. Edit the file to add or
+>   remove answers.
+> - **Smarter backup.** If the vector model can't be downloaded, the game falls
+>   back to an expanded Datamuse ranking (neighbours of neighbours), and
+>   anything it doesn't cover gets a stable, non-spelling-based far rank.
+> - **Test-mode bots guess like people** (spread of far and near words that
+>   gets closer over time) and still always finish.
+> - The status drawer (tap the bar at the top) shows which ranking engine is active.
 >
-> See "Step 2" below for how to re-deploy these files.
+> **First start:** the server downloads the vector model once (~160 MB, takes
+> a short while; the game uses the backup ranking until it is ready, and the
+> drawer will say "word-vector model"). It is cached in the server's temp
+> folder. If the built-in download link ever fails, see "Word-vector model"
+> below.
 
 This is a complete, ready-to-deploy web app. Your audience guesses a secret
 word — always picked fresh at random, from a balanced pool of common-to-
@@ -420,3 +424,24 @@ Because Test Mode never touches TikTok, you (or anyone helping you) can
 always verify the game logic still works after any future change simply
 by opening the app, tapping **⚙️ Settings**, switching to **Test**, and
 tapping **Start round** — no need to go live to check.
+
+
+---
+
+## Word-vector model (what powers the ranking)
+
+Default: GloVe `glove-wiki-gigaword-100` (fallback: 50-dimension version),
+downloaded from Hugging Face on startup. You can change the source without
+touching code:
+
+- **Environment variables** (Render → Environment): `EMBEDDING_NPY_URL`
+  (a `.npy` float32 matrix, one row per word) and `EMBEDDING_VOCAB_URL`
+  (the matching word list: plain text, one word per line, or a gensim
+  `.model` file). Set both.
+- **Or upload files** into `data/vectors/`: `vectors.npy` plus `vocab.txt`
+  (or `vocab.model`).
+
+If every source fails, the game still works with the Datamuse backup ranking.
+Memory: loading needs roughly 300 MB briefly; once trimmed it uses about 30 MB.
+On Render's free 512 MB tier this is fine; if it ever runs out of memory,
+set `EMBEDDING_NPY_URL`/`EMBEDDING_VOCAB_URL` to the 50-dimension files.
