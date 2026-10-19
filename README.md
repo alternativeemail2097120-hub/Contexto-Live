@@ -1,6 +1,14 @@
 # Contexto LIVE — play a word-guessing game with your TikTok chat
 
-> **What's new in this version (rebuilt to behave like the real Contexto)**
+> **Latest changes**
+> - **Save & Apply (and Save & Apply as Default) now start the game
+>   automatically** — no need to press Start round / New round. (If a round is
+>   running, it restarts with the new settings.) Auto next round is now **on
+>   by default**, so rounds keep going by themselves.
+> - The winning word now shows **#1** instead of "EXACT", and its row is
+>   coloured green.
+>
+> **Earlier: rebuilt to behave like the real Contexto**
 > - **Real word-vector ranking.** On startup the server loads a pre-trained
 >   GloVe word-vector model (about 70,000 common English words) and ranks the
 >   *whole vocabulary* by meaning-distance to the secret word. #1 is the

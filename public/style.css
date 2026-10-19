@@ -728,7 +728,8 @@ button { font-family: inherit; }
 @keyframes rowIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
 .guess-heat { position: absolute; inset: 0 auto 0 0; z-index: 0; opacity: .28; }
-.guess-row.win { border-color: var(--tier-exact); }
+.guess-row.win { border-color: var(--tier-dark-green); background: color-mix(in srgb, var(--tier-dark-green) 38%, var(--panel-2)); }
+.guess-row.win .guess-heat { opacity: 0; }
 .guess-row.host { border: 1px dashed var(--brand-cyan); }
 .guess-row.hint { border: 1px dashed var(--gold); }
 .guess-row.repeat { border-color: color-mix(in srgb, var(--gold) 50%, transparent); }
@@ -750,7 +751,7 @@ button { font-family: inherit; }
 .guess-pts { z-index: 1; font-size: 12px; font-weight: 800; color: var(--gold); white-space: nowrap; }
 .guess-rank { z-index: 1; font-size: 11.5px; font-weight: 800; white-space: nowrap; padding: 2px 8px; border-radius: 999px; }
 
-.rank-exact { background: color-mix(in srgb, var(--tier-exact) 20%, transparent); color: var(--tier-exact); }
+.rank-exact { background: color-mix(in srgb, var(--tier-dark-green) 30%, transparent); color: var(--tier-dark-green); }
 .rank-dark-green { background: color-mix(in srgb, var(--tier-dark-green) 22%, transparent); color: var(--tier-dark-green); }
 .rank-green { background: color-mix(in srgb, var(--tier-green) 16%, transparent); color: var(--tier-green); }
 .rank-orange { background: color-mix(in srgb, var(--tier-orange) 16%, transparent); color: var(--tier-orange); }

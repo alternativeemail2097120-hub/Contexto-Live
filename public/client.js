@@ -438,7 +438,7 @@
   const DEFAULTS = Object.assign({
     mode: 'live', username: '',
     autoplay: true, speed: 'normal', playerName: '',
-    autoNextRound: false,
+    autoNextRound: true,
   }, DEFAULT_TIMINGS);
   function loadSettings() {
     try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; }
@@ -536,7 +536,8 @@
     saveApplyBtn.addEventListener('click', () => {
       saveSettings();
       pushAutoplay();
-      toast('Settings saved on this device.');
+      toast('Settings saved — starting the game.');
+      applyAndStart();
     });
   }
   if (saveApplyDefaultBtn) {
@@ -545,7 +546,8 @@
       pushAutoplay();
       appliedServerDefaults = true; // this device just set the default — never overwrite it back
       send({ type: 'save_default_settings', settings: settingsSnapshot() });
-      toast('Saved as default — every device will start with these settings.');
+      toast('Saved as default — starting the game.');
+      applyAndStart();
     });
   }
 
@@ -739,6 +741,12 @@
     }
   }
 
+  // Save & Apply starts the game automatically (restarting it if one is running).
+  function applyAndStart() {
+    try { closeSheet(settingsSheet, settingsToggle); } catch (e) { /* ignore */ }
+    if (!starting) startRound();
+  }
+
   roundBtn.addEventListener('click', () => {
     if (isActive()) {
       // A single tap ends the round right away and reveals the exact
@@ -789,7 +797,7 @@
   }
   function tierColor(rank) {
     if (rank == null) return 'var(--tier-red)';
-    if (rank === 1) return 'var(--tier-exact)';
+    if (rank === 1) return 'var(--tier-dark-green)';
     if (rank <= 50) return 'var(--tier-dark-green)';
     if (rank <= 300) return 'var(--tier-green)';
     if (rank <= 1500) return 'var(--tier-orange)';
@@ -797,7 +805,7 @@
   }
   function rankLabel(rank) {
     if (rank == null) return 'unknown word';
-    if (rank === 1) return '🎯 EXACT';
+    if (rank === 1) return '#1';
     return '#' + rank;
   }
   // Log-scaled bar width so mid-range ranks stay visually distinguishable
