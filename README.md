@@ -1,6 +1,16 @@
 # Contexto LIVE — play a word-guessing game with your TikTok chat
 
-> **Latest changes — connection fixes**
+> **Latest fix — game now always starts**
+> - **Start round / Save & Apply can no longer hang.** The online word-similarity
+>   lookup now has strict time limits (5 s per request, 9 s total). If it is slow
+>   or blocked, the round starts anyway using the built-in offline puzzles.
+> - **Lower memory use.** The word-vector model is now downloaded in part (only
+>   the most common ~150,000 words, roughly a third of the old ~160 MB), so
+>   small free hosting plans no longer run out of memory and restart — which
+>   was what showed up as "connection issues" and a game that never began.
+> - Added a `/health` page and a `render.yaml` for one-click Render deploys.
+
+> **Earlier changes — connection fixes**
 > - **Auto-reconnect to TikTok.** If the connection drops mid-stream, the app
 >   reconnects by itself (up to 10 tries) instead of staying "Disconnected".
 > - **Connect before you go LIVE.** If the account isn't live yet, it waits and

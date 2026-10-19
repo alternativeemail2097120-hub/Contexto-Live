@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: tiktok-contexto-live
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=400
+      - key: TIKTOK_SIGN_API_KEY
+        sync: false

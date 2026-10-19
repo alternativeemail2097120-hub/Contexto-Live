@@ -243,6 +243,7 @@ app.use((req, res, next) => {
 });
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/health', (req, res) => res.json({ ok: true, embeddings: embeddings.status, gameActive: !!state.game.active }));
 app.use(express.json());
 
 const clients = new Set();
@@ -675,9 +676,23 @@ function datamuseUrl(code, word, max) {
   return `https://api.datamuse.com/words?${q}&max=${max}`;
 }
 async function fetchDatamuseRelation(code, word, max) {
-  const res = await fetch(datamuseUrl(code, word, max));
-  if (!res.ok) throw new Error('Datamuse ' + code + ' responded with status ' + res.status);
-  return res.json();
+  // Hard 5-second limit per request: a slow or blocked network must never
+  // freeze the game (this used to hang "Start round" forever).
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const res = await fetch(datamuseUrl(code, word, max), { signal: ctrl.signal });
+    if (!res.ok) throw new Error('Datamuse ' + code + ' responded with status ' + res.status);
+    return await res.json();
+  } finally { clearTimeout(timer); }
+}
+
+// Resolves with the promise's value, or rejects after `ms` — used so a round
+// always starts within a few seconds, whatever the network is doing.
+function withTimeout(promise, ms, label) {
+  let timer;
+  const t = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error((label || 'operation') + ' timed out')), ms); });
+  return Promise.race([promise, t]).finally(() => clearTimeout(timer));
 }
 
 // Fetches every relation in parallel (a single slow/failed relation never
@@ -851,28 +866,29 @@ async function startGame(mode, opts = {}) {
         throw new Error('"' + custom + '" is not in the game\'s word vocabulary. Try a more common word, or leave it empty for a random one.');
       } else {
         try {
-          puzzle = await buildPuzzleFromDatamuse(custom);
+          puzzle = await withTimeout(buildPuzzleFromDatamuse(custom), 9000, 'word-similarity service');
         } catch (err) {
-          console.error('[DATAMUSE FAILED]', err);
+          console.error('[DATAMUSE FAILED]', err.message);
           if (!FALLBACK_PUZZLES[custom] && !ENGLISH_WORDS.has(custom)) {
             throw new Error(`Could not build a ranking for "${custom}". Check the spelling, or leave the secret word empty for a random one.`);
           }
-          broadcast({ type: 'server_error', message: 'Could not reach the word-similarity service, using the offline backup ranking instead.' });
           puzzle = buildPuzzleFromFallback(custom);
         }
       }
     } else if (useEmb) {
       puzzle = buildPuzzleFromEmbeddings(pickBalancedTargetWord());
     } else {
-      let lastErr = null;
-      for (let attempt = 1; attempt <= 8 && !puzzle; attempt++) {
-        try { puzzle = await buildPuzzleFromDatamuse(pickBalancedTargetWord()); } catch (err) { lastErr = err; }
+      // Word-vector model still loading (or unavailable): try the online
+      // similarity service for at most ~9 seconds in total, then use the
+      // built-in offline puzzles so the round ALWAYS starts.
+      const deadline = Date.now() + 9000;
+      const word = pickBalancedTargetWord();
+      try {
+        puzzle = await withTimeout(buildPuzzleFromDatamuse(word), Math.max(1000, deadline - Date.now()), 'word-similarity service');
+      } catch (err) {
+        console.error('[DATAMUSE FAILED]', err.message);
       }
-      if (!puzzle) {
-        console.error('[DATAMUSE FAILED after retries]', lastErr);
-        broadcast({ type: 'server_error', message: 'Could not reach the word-similarity service, using the offline backup ranking instead.' });
-        puzzle = buildPuzzleFromFallback(pickRandom(baseFormOnly(Object.keys(FALLBACK_PUZZLES))));
-      }
+      if (!puzzle) puzzle = buildPuzzleFromFallback(pickRandom(baseFormOnly(Object.keys(FALLBACK_PUZZLES))));
     }
 
     if (!puzzle) throw new Error('Could not build a puzzle for that word.');
