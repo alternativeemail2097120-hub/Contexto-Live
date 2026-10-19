@@ -1,6 +1,21 @@
 # Contexto LIVE — play a word-guessing game with your TikTok chat
 
-> **Latest changes**
+> **Latest changes — connection fixes**
+> - **Auto-reconnect to TikTok.** If the connection drops mid-stream, the app
+>   reconnects by itself (up to 10 tries) instead of staying "Disconnected".
+> - **Connect before you go LIVE.** If the account isn't live yet, it waits and
+>   connects the moment the stream starts (up to ~10 minutes).
+> - **Clear failure reasons**: not LIVE, username not found, sign key rejected,
+>   rate-limited, network problem. A wrong username or key is reported at once
+>   instead of being retried.
+> - **No more stuck "Connecting…"** (40-second timeout, then retry) and no more
+>   stale events overwriting a fresh connection when you Cancel/Connect again.
+> - **Old chat is ignored** when you connect (no replayed history counted as guesses).
+> - **Phone ↔ server link is sturdier**: keep-alive pings, automatic reconnect
+>   with backoff, and instant recovery when the phone wakes up or regains signal.
+> - The sign key can now be set as `TIKTOK_SIGN_API_KEY`, `EULER_API_KEY` or `SIGN_API_KEY`.
+>
+> **Previous changes**
 > - **New rank colours:** #1 green · #2–10 blue · #11–50 purple · #51–100
 >   pink · #101–500 orange · #501+ red (the old scale list further down in
 >   this README is out of date).

@@ -246,13 +246,26 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 app.use(express.json());
 
 const clients = new Set();
+// Keep-alive: ping every client regularly so hosting proxies don't silently
+// drop idle sockets, and clean out sockets that stopped answering.
+setInterval(() => {
+  for (const c of clients) {
+    if (c.isAlive === false) { try { c.terminate(); } catch {} clients.delete(c); continue; }
+    c.isAlive = false;
+    try { c.ping(); } catch {}
+  }
+}, 25000).unref();
 wss.on('connection', (ws) => {
   clients.add(ws);
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
   safeSend(ws, { type: 'state', state: getPublicState() });
 
   ws.on('message', (raw) => {
     try {
       const msg = JSON.parse(raw.toString());
+      ws.isAlive = true;
+      if (msg.type === 'ping') { safeSend(ws, { type: 'pong' }); return; }
       handleClientMessage(msg, ws);
     } catch (err) {
       console.error('[WS MESSAGE ERROR]', err);
@@ -1206,25 +1219,87 @@ function extractAvatar(data) {
   );
 }
 
-async function connectTikTok(username, attempt = 1) {
+// ------------------------------------------------------------
+// Connection manager.
+//  - Every connection gets a generation number; events from an older
+//    connection (or one the host cancelled) are ignored, so a stale
+//    "disconnected" can never overwrite a fresh "connected".
+//  - connect() can't hang forever: it times out and retries.
+//  - If TikTok drops the connection mid-stream, it reconnects by itself.
+//  - If the account isn't LIVE yet, it keeps waiting and connects the
+//    moment the stream starts (up to ~10 minutes), instead of giving up.
+//  - Clear, plain-English reasons for each kind of failure; a bad
+//    username or sign key is reported at once instead of retried.
+// ------------------------------------------------------------
+const CONN_TUNING = {
+  connectTimeoutMs: 40000,
+  retryDelaysMs: [3000, 6000, 12000, 20000, 30000, 30000], // general failures
+  offlineRetryMs: 15000, offlineMaxRetries: 40,            // waiting for the stream to start
+  dropReconnectMs: 2500, dropMaxRetries: 10,               // mid-stream drops
+};
+let connGen = 0;
+let wantedUsername = null; // set while the host wants to be connected
+
+function classifyConnectError(err) {
+  const name = String((err && err.name) || '');
+  const msg = safeMsg(err);
+  const m = (name + ' ' + msg).toLowerCase();
+  if (/useroffline|not.*live|is offline|isn.t live|hostnotonline|room.*(ended|not found)|live has ended|offline/.test(m)) return { kind: 'offline', text: 'is not LIVE right now' };
+  if (/invaliduniqueid|invalid.*(unique|user)|user.*not found|no such user|404/.test(m)) return { kind: 'user', text: 'username not found — check the spelling (no @)' };
+  if (/sign.*(key|api)|api.?key|unauthori|forbidden|401|403|invalid key|key.*(invalid|expired)/.test(m)) return { kind: 'key', text: 'the sign key was rejected — check TIKTOK_SIGN_API_KEY on Render' };
+  if (/rate.?limit|429|too many/.test(m)) return { kind: 'rate', text: 'TikTok/EulerStream is rate-limiting requests — wait a minute' };
+  if (/timed out|timeout|etimedout|econnreset|enotfound|econnrefused|network|fetch failed|socket/.test(m)) return { kind: 'network', text: 'network problem reaching TikTok' };
+  return { kind: 'other', text: msg };
+}
+
+function signKey() {
+  return process.env.TIKTOK_SIGN_API_KEY || process.env.EULER_API_KEY || process.env.SIGN_API_KEY || '';
+}
+
+function dropConnection() {
+  const old = tiktokConn;
+  tiktokConn = null;
+  if (old) {
+    try { old.removeAllListeners && old.removeAllListeners(); } catch {}
+    try { old.on && old.on('error', () => {}); } catch {}   // swallow late errors from the dead connection
+    try { old.disconnect(); } catch {}
+  }
+}
+
+function scheduleRetry(username, gen, attempt, delayMs, message) {
+  updateConnStatus('retrying', message, username);
   clearTimeout(retryTimer);
-  const MAX_ATTEMPTS = 3;
+  retryTimer = setTimeout(() => { if (gen === connGen && wantedUsername) connectTikTok(username, attempt, { gen }); }, delayMs);
+}
+
+async function connectTikTok(username, attempt = 1, opts = {}) {
+  clearTimeout(retryTimer);
+  const isRetry = !!opts.gen;
+  const gen = isRetry ? opts.gen : ++connGen;
+  if (!isRetry) { dropConnection(); wantedUsername = username; }
+  if (gen !== connGen) return;
+  const mode = opts.mode || 'start';   // 'start' | 'drop' (reconnect after a drop)
 
   try {
-    if (tiktokConn) { try { tiktokConn.disconnect(); } catch {} }
-
+    dropConnection();
     const lib = require('tiktok-live-connector');
     const ConnClass = loadConnectorClass();
     const EVT = loadEventNames(lib);
+    const CE = lib.ControlEvent || {};
 
-    const options = {};
-    if (process.env.TIKTOK_SIGN_API_KEY) {
-      options.signApiKey = process.env.TIKTOK_SIGN_API_KEY;
-    }
+    const options = {
+      processInitialData: false,     // don't replay old chat history as guesses
+      enableExtendedGiftInfo: false,
+    };
+    if (signKey()) options.signApiKey = signKey();
 
-    tiktokConn = new ConnClass(username, options);
+    const conn = new ConnClass(username, options);
+    tiktokConn = conn;
+    let dropBase = mode === 'drop' ? (opts.dropAttempt || 0) : 0;
+    const current = () => gen === connGen && tiktokConn === conn;
 
-    tiktokConn.on(EVT.CHAT, (data) => {
+    conn.on(EVT.CHAT, (data) => {
+      if (!current()) return;
       try {
         state.diagnostics.rawEventCount += 1;
         if (state.diagnostics.rawSamples.length < 5) {
@@ -1234,57 +1309,104 @@ async function connectTikTok(username, attempt = 1) {
         const text = extractText(data);
         const avatar = extractAvatar(data);
         state.diagnostics.lastReceived = { user, text };
-
         broadcast({
           type: 'raw_event',
           rawEventCount: state.diagnostics.rawEventCount,
           lastReceived: state.diagnostics.lastReceived,
           rawSamples: state.diagnostics.rawSamples,
         });
-
-        // Chat only counts as guesses during a Live round; Test and Offline
-        // rounds ignore whatever the connected chat is saying.
+        // Chat only counts as guesses during a Live round.
         if (state.mode === 'live') handleGuess(user, text, false, avatar);
       } catch (err) {
         console.error('[CHAT HANDLER ERROR]', err);
       }
     });
 
-    tiktokConn.on(EVT.ROOM_USER, (data) => {
+    conn.on(EVT.ROOM_USER, (data) => {
+      if (!current()) return;
       try {
         const vc = extractViewerCount(data);
         if (vc != null) { state.viewerCount = vc; pushState(); }
-      } catch (err) {
-        console.error('[ROOM_USER HANDLER ERROR]', err);
+      } catch (err) { console.error('[ROOM_USER HANDLER ERROR]', err); }
+    });
+
+    // Errors on an open connection must never crash the server.
+    conn.on(CE.ERROR || 'error', (err) => {
+      if (!current()) return;
+      console.error('[TIKTOK ERROR EVENT]', safeMsg(err));
+    });
+
+    const onDrop = (why) => {
+      if (!current() || !wantedUsername) return;
+      state.viewerCount = null;
+      const dropAttempt = dropBase + 1;
+      dropConnection();
+      if (dropAttempt > CONN_TUNING.dropMaxRetries) {
+        updateConnStatus('error', `Lost the connection to @${username} and could not restore it. Tap Connect to try again.`, username);
+        return;
       }
-    });
+      scheduleRetryDrop(username, gen, dropAttempt, why);
+    };
+    conn.on(EVT.DISCONNECTED, () => onDrop('The connection dropped'));
+    conn.on((lib.WebcastEvent && lib.WebcastEvent.STREAM_END) || 'streamEnd', () => onDrop('The live stream ended'));
 
-    tiktokConn.on(EVT.DISCONNECTED, () => {
-      updateConnStatus('error', 'Disconnected from TikTok LIVE. Tap Connect to try again.', username);
-    });
+    updateConnStatus('connecting', mode === 'drop'
+      ? `Reconnecting to @${username}…`
+      : `Connecting to @${username} (attempt ${attempt})…`, username);
 
-    updateConnStatus('connecting', `Connecting to @${username} (attempt ${attempt} of ${MAX_ATTEMPTS})...`, username);
-    await tiktokConn.connect();
+    let timer;
+    await Promise.race([
+      conn.connect(),
+      new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('Timed out waiting for TikTok to respond')), CONN_TUNING.connectTimeoutMs); }),
+    ]).finally(() => clearTimeout(timer));
+
+    if (!current()) { try { conn.disconnect(); } catch {} return; } // cancelled while connecting
+    dropBase = 0; // healthy again: a later drop starts counting from scratch
     updateConnStatus('connected', `Connected to @${username}. Waiting for chat messages...`, username);
   } catch (err) {
+    if (gen !== connGen) return;           // host cancelled or started another connection
     console.error('[TIKTOK CONNECT ERROR]', err);
-    if (attempt < MAX_ATTEMPTS) {
-      const delayMs = attempt * 3000;
-      updateConnStatus('retrying', `Could not connect. Retrying in ${Math.round(delayMs / 1000)}s... (attempt ${attempt} of ${MAX_ATTEMPTS})`, username);
-      retryTimer = setTimeout(() => connectTikTok(username, attempt + 1), delayMs);
+    dropConnection();
+    const info = classifyConnectError(err);
+
+    if (info.kind === 'user' || info.kind === 'key') {
+      wantedUsername = null;
+      updateConnStatus('error', `Could not connect to @${username}: ${info.text}.`, username);
+    } else if (info.kind === 'offline') {
+      if (attempt > CONN_TUNING.offlineMaxRetries) {
+        wantedUsername = null;
+        updateConnStatus('error', `@${username} still isn't LIVE after waiting 10 minutes. Go LIVE, then tap Connect.`, username);
+      } else {
+        scheduleRetry(username, gen, attempt + 1, CONN_TUNING.offlineRetryMs,
+          `@${username} ${info.text}. Waiting for the stream to start — it will connect by itself…`);
+      }
     } else {
-      updateConnStatus(
-        'error',
-        `Could not connect to @${username} after ${MAX_ATTEMPTS} tries. Check that: the username is correct (no @), the account is currently LIVE, and your sign key is valid. (${safeMsg(err)})`,
-        username
-      );
+      const delays = CONN_TUNING.retryDelaysMs;
+      if (attempt > delays.length) {
+        wantedUsername = null;
+        updateConnStatus('error', `Could not connect to @${username} after ${attempt} tries (${info.text}). Check your internet/sign key, then tap Connect.`, username);
+      } else {
+        const d = delays[attempt - 1];
+        scheduleRetry(username, gen, attempt + 1, d,
+          `Could not connect (${info.text}). Retrying in ${Math.round(d / 1000)}s… (attempt ${attempt + 1})`);
+      }
     }
   }
 }
 
-function disconnectTikTok() {
+function scheduleRetryDrop(username, gen, dropAttempt, why) {
+  updateConnStatus('retrying', `${why}. Reconnecting… (try ${dropAttempt})`, username);
   clearTimeout(retryTimer);
-  if (tiktokConn) { try { tiktokConn.disconnect(); } catch {} }
+  retryTimer = setTimeout(() => {
+    if (gen === connGen && wantedUsername) connectTikTok(username, 1, { gen, mode: 'drop', dropAttempt });
+  }, CONN_TUNING.dropReconnectMs * Math.min(dropAttempt, 4));
+}
+
+function disconnectTikTok() {
+  connGen++;                 // invalidates every pending retry/handler
+  wantedUsername = null;
+  clearTimeout(retryTimer);
+  dropConnection();
   updateConnStatus('idle', 'Disconnected.', null);
   state.viewerCount = null;
 }

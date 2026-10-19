@@ -19,28 +19,55 @@
   let wsReady = false;
   const pendingQueue = [];
 
+  let wsRetry = 0;
+  let wsLastMsg = Date.now();
+  let wsToasted = false;
+  let wsTimer = null;
+
   function connectWS() {
+    clearTimeout(wsTimer);
+    if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    ws = new WebSocket(`${proto}://${location.host}`);
-    ws.onopen = () => {
-      wsReady = true;
-      while (pendingQueue.length) ws.send(JSON.stringify(pendingQueue.shift()));
+    const sock = new WebSocket(`${proto}://${location.host}`);
+    ws = sock;
+    sock.onopen = () => {
+      if (ws !== sock) return;
+      wsReady = true; wsRetry = 0; wsLastMsg = Date.now();
+      if (wsToasted) { toast('Reconnected to the game server.'); wsToasted = false; }
+      while (pendingQueue.length) sock.send(JSON.stringify(pendingQueue.shift()));
     };
-    ws.onclose = () => {
+    sock.onclose = () => {
+      if (ws !== sock) return;
       wsReady = false;
-      toast('Lost connection to the game server. Reconnecting…');
-      setTimeout(connectWS, 2000);
+      if (!wsToasted) { toast('Lost connection to the game server. Reconnecting…'); wsToasted = true; }
+      // 1s, 2s, 4s … capped at 10s, so it recovers quickly but never hammers the server
+      const delay = Math.min(10000, 1000 * Math.pow(2, wsRetry++));
+      wsTimer = setTimeout(connectWS, delay);
     };
-    ws.onerror = () => {};
-    ws.onmessage = (evt) => {
-      try { handleServerMessage(JSON.parse(evt.data)); }
-      catch (e) { console.error('bad message from server', e); }
+    sock.onerror = () => { try { sock.close(); } catch (e) { /* ignore */ } };
+    sock.onmessage = (evt) => {
+      wsLastMsg = Date.now();
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg && msg.type === 'pong') return;
+        handleServerMessage(msg);
+      } catch (e) { console.error('bad message from server', e); }
     };
   }
   function send(obj) {
-    if (wsReady) ws.send(JSON.stringify(obj));
-    else pendingQueue.push(obj);
+    if (wsReady && ws.readyState === 1) ws.send(JSON.stringify(obj));
+    else { pendingQueue.push(obj); connectWS(); }
   }
+  // Heartbeat: if the server goes quiet (e.g. a phone woke from sleep with a
+  // dead socket), drop it and reconnect instead of staring at a frozen screen.
+  setInterval(() => {
+    if (!ws || ws.readyState !== 1) return;
+    if (Date.now() - wsLastMsg > 70000) { try { ws.close(); } catch (e) { /* ignore */ } return; }
+    try { ws.send(JSON.stringify({ type: 'ping' })); } catch (e) { /* ignore */ }
+  }, 25000);
+  function wakeWS() { wsRetry = 0; if (!ws || ws.readyState > 1) connectWS(); }
+  window.addEventListener('online', wakeWS);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeWS(); });
   connectWS();
 
   // ============================================================
