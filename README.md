@@ -1,6 +1,17 @@
 # Contexto LIVE — play a word-guessing game with your TikTok chat
 
-> **Latest fix — game now always starts**
+> **Latest — ranking quality (from your test screenshots)**
+> - **Grammar words are now far away.** Words like "at", "is", "with", "to", "as"
+>   were landing at #96–#180; they now rank at the far end, like the real game.
+> - **No more obscure junk words.** Guessable vocabulary is trimmed from ~70,000
+>   to the ~45,000 most common real words, which removes oddities such as
+>   "trinketization", "beaune", "jure", "foo" and "tunk" from guesses and from
+>   test-mode bots. It also loads faster and uses less memory.
+
+> **Earlier — light-grey guess rows.** Every guess row (and the "Latest" row) is now
+>   light grey on all colour themes, with dark text, so the theme colour never tints them.
+
+> **Earlier fix — game now always starts**
 > - **Start round / Save & Apply can no longer hang.** The online word-similarity
 >   lookup now has strict time limits (5 s per request, 9 s total). If it is slow
 >   or blocked, the round starts anyway using the built-in offline puzzles.

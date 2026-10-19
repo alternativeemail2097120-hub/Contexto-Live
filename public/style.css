@@ -945,3 +945,30 @@ button { font-family: inherit; }
 :root[data-theme="blossom"], :root[data-theme="lavender"], :root[data-theme="honey"] {
   --tier-blue: #1d63c4; --tier-purple: #7a3fc2; --tier-pink: #c4287c;
 }
+
+/* ============================================================
+   Guess rows: always light grey, whatever the colour theme is.
+   Text inside is forced dark so it stays readable on every theme.
+   ============================================================ */
+.guess-row,
+.guess-row.win {
+  background: #e6e8ec;
+  color: #1c2030;
+}
+.guess-row.win { border-color: var(--tier-dark-green); }
+.guess-row .guess-user,
+.guess-row .guess-word { color: #1c2030; }
+.guess-row.is-empty { color: #4b5263; }
+.guess-row .guess-pts,
+.guess-row .guess-note,
+.guess-row.hint .guess-user { color: #8a5a00; }
+.guess-row .guess-note { background: rgba(138, 90, 0, .14); }
+.guess-row .guess-rank { font-weight: 800; }
+.guess-row .rank-exact,
+.guess-row .rank-dark-green { color: #0b6b3a; }
+.guess-row .rank-green { color: #1d7a2f; }
+.guess-row .rank-blue { color: #1f57b8; }
+.guess-row .rank-purple { color: #6a35b8; }
+.guess-row .rank-pink { color: #b3246f; }
+.guess-row .rank-orange { color: #b4570a; }
+.guess-row .rank-red { color: #b3261e; }
