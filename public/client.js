@@ -868,13 +868,18 @@
     }
     const displayUser = entry.isHint ? '💡 Hint' : entry.user;
     const showAvatar = !entry.isHint && !entry.isHost && !entry.isReveal;
+    // Three-column row: guessed word (left) | avatar + name (centre) | rank (right)
     return `
       <div class="guess-heat" style="width:${heatWidth(entry.rank)};background:${tierColor(entry.rank)}"></div>
-      ${showAvatar ? avatarHtml(entry.user, entry.avatar) : ''}
-      <span class="guess-user">${escapeHtml(displayUser)}</span>
       <span class="guess-word">${escapeHtml(entry.word)}</span>
-      ${note}
-      <span class="guess-rank ${tierClass(entry.rank)}">${rankLabel(entry.rank)}</span>
+      <span class="guess-who">
+        ${showAvatar ? avatarHtml(entry.user, entry.avatar) : ''}
+        <span class="guess-user">${escapeHtml(displayUser)}</span>
+      </span>
+      <span class="guess-end">
+        ${note}
+        <span class="guess-rank ${tierClass(entry.rank)}">${rankLabel(entry.rank)}</span>
+      </span>
     `;
   }
 

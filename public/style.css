@@ -682,7 +682,7 @@ button { font-family: inherit; }
    ============================================================ */
 .latest { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; margin-top: 10px; }
 .latest .guess-row { flex: 1; min-width: 0; }
-.guess-row.is-empty { color: var(--muted); font-size: 13px; }
+.guess-row.is-empty { color: var(--muted); font-size: 13px; display: block; }
 
 .board {
   display: flex;
@@ -716,7 +716,8 @@ button { font-family: inherit; }
 
 .guess-row {
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   padding: 9px 11px;
@@ -739,7 +740,9 @@ button { font-family: inherit; }
 .guess-user { font-weight: 700; font-size: 12.5px; z-index: 1; white-space: nowrap; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
 .guess-row.hint .guess-user { color: var(--gold); }
 .guess-row .pp-avatar { width: 26px; height: 26px; font-size: 11px; z-index: 1; }
-.guess-word { flex: 1; min-width: 0; z-index: 1; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+.guess-who { z-index: 1; display: flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; max-width: 100%; }
+.guess-end { z-index: 1; display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
+.guess-word { justify-self: start; max-width: 100%; min-width: 0; z-index: 1; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
 .guess-note {
   z-index: 1;
   font-size: 11px;
@@ -929,8 +932,8 @@ button { font-family: inherit; }
    "Already guessed" note give up space before the word does. */
 @media (max-width: 440px) {
   .guess-row { gap: 8px; padding: 9px 9px; }
-  .guess-user { flex: 0 1 auto; min-width: 0; max-width: 64px; }
-  .guess-word { min-width: 56px; }
+  .guess-user { max-width: 64px; }
+  .guess-who { gap: 5px; }
   .guess-note { font-size: 10px; padding: 2px 6px; }
   .overlay-answer { font-size: 32px; }
 }
